@@ -49,7 +49,14 @@ This project uses the Claude Spec Workflow for all infrastructure changes. **DO 
 2. Make changes and commit
 3. Push branch: `git push -u origin feature/descriptive-name`
 4. Create PR: `gh pr create --title "..." --body "..."`
-5. Merge PR: `gh pr merge N --squash --delete-branch`
+5. Merge PR: `gh pr merge N --merge --delete-branch`
+
+### Merge Strategy (CRITICAL)
+- ✅ **ALWAYS** use `--merge` for merge commits
+- ❌ **NEVER** use `--squash` - preserves full audit trail
+- ❌ **NEVER** use `--rebase` unless explicitly requested
+- 💡 If squashing is desired, do interactive rebase on feature branch BEFORE merging
+- 💡 Full commit history = clear audit trail = easier debugging
 
 ### Branch Protection
 - ❌ **NEVER** push directly to `main`
@@ -149,7 +156,8 @@ trakrf-infra/
 3. ❌ Skipping validation gates
 4. ❌ Creating PRs manually when CSW is active
 5. ❌ Using `.env` instead of `.env.local`
-6. ❌ **Pushing directly to main instead of using feature branches**
+6. ❌ Pushing directly to main instead of using feature branches
+7. ❌ **Using `--squash` or `--rebase` when merging PRs - ALWAYS use `--merge`**
 
 ## Contact
 Solo developer: @mikestankavich (admin@trakrf.id)
