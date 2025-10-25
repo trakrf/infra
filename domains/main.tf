@@ -9,7 +9,7 @@ resource "cloudflare_zone" "domain" {
 resource "cloudflare_record" "root" {
   zone_id = cloudflare_zone.domain.id
   name    = "@"
-  content = "trakrf.vercel.app"
+  content = cloudflare_pages_project.www.subdomain
   type    = "CNAME"
   proxied = true
 }
