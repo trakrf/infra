@@ -22,6 +22,24 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
+# Preview subdomain for Cloudflare Pages preview deployments
+resource "cloudflare_record" "preview" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "preview"
+  content = "preview.${cloudflare_pages_project.www.subdomain}"
+  type    = "CNAME"
+  proxied = true
+}
+
+# App preview subdomain for Railway deployments
+resource "cloudflare_record" "app_preview" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "app.preview"
+  content = var.railway_app_preview_endpoint
+  type    = "CNAME"
+  proxied = true
+}
+
 resource "cloudflare_record" "mail" {
   zone_id = cloudflare_zone.domain.id
   name    = "main"
