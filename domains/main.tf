@@ -1,6 +1,6 @@
 resource "cloudflare_zone" "domain" {
   account_id = var.account_id
-  zone      = var.domain_name
+  zone       = var.domain_name
 }
 
 # DNS Records
@@ -28,7 +28,7 @@ resource "cloudflare_record" "app" {
   name    = "app"
   content = var.railway_app_prod_endpoint
   type    = "CNAME"
-  proxied = true
+  proxied = false # DNS-only mode for Railway deployments
 }
 
 # Preview subdomain for Cloudflare Pages preview deployments
@@ -46,7 +46,7 @@ resource "cloudflare_record" "app_preview" {
   name    = "app.preview"
   content = var.railway_app_preview_endpoint
   type    = "CNAME"
-  proxied = true
+  proxied = false # DNS-only mode for Railway deployments
 }
 
 resource "cloudflare_record" "mail" {
@@ -93,17 +93,17 @@ locals {
   catchall_email = "REDACTED_EMAIL"
 
   email_aliases = {
-    abuse = local.catchall_email
-    admin = local.catchall_email
-    info = local.catchall_email
-    sales = local.catchall_email
+    abuse   = local.catchall_email
+    admin   = local.catchall_email
+    info    = local.catchall_email
+    sales   = local.catchall_email
     support = local.catchall_email
   }
 }
 
 resource "cloudflare_email_routing_address" "example_email_routing_address" {
   account_id = var.account_id
-  email = local.catchall_email
+  email      = local.catchall_email
 }
 
 # Create a specific email routing rule (example)
@@ -130,14 +130,14 @@ resource "cloudflare_email_routing_rule" "alias" {
 resource "cloudflare_zone_settings_override" "domain_settings" {
   zone_id = cloudflare_zone.domain.id
   settings {
-    ssl = "strict"
-    always_use_https = "on"
-    min_tls_version = "1.2"
-    security_level = "medium"
-    brotli = "on"
+    ssl                      = "strict"
+    always_use_https         = "on"
+    min_tls_version          = "1.2"
+    security_level           = "medium"
+    brotli                   = "on"
     automatic_https_rewrites = "on"
     opportunistic_encryption = "on"
-    tls_1_3 = "on"
+    tls_1_3                  = "on"
     security_header {
       enabled = true
     }
