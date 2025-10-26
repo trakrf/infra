@@ -22,6 +22,15 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
+# App subdomain for Railway production deployment
+resource "cloudflare_record" "app" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "app"
+  content = var.railway_app_prod_endpoint
+  type    = "CNAME"
+  proxied = true
+}
+
 # Preview subdomain for Cloudflare Pages preview deployments
 resource "cloudflare_record" "preview" {
   zone_id = cloudflare_zone.domain.id
