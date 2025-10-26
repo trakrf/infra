@@ -33,11 +33,18 @@ resource "cloudflare_pages_project" "www" {
   }
 }
 
-# Custom domain for the Pages project
+# Custom domain for the Pages project (production)
 resource "cloudflare_pages_domain" "www_custom" {
   account_id   = var.account_id
   project_name = cloudflare_pages_project.www.name
   domain       = var.domain_name
+}
+
+# Custom domain for preview subdomain
+resource "cloudflare_pages_domain" "preview_custom" {
+  account_id   = var.account_id
+  project_name = cloudflare_pages_project.www.name
+  domain       = "preview.${var.domain_name}"
 }
 
 # Output the Pages URL
