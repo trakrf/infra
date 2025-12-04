@@ -143,3 +143,31 @@ resource "cloudflare_zone_settings_override" "domain_settings" {
     }
   }
 }
+
+# Customer-specific email routing setup
+# JCI-OMH: Multi-destination alias (differs from single-destination pattern above)
+resource "cloudflare_email_routing_address" "jci_stephen" {
+  account_id = var.account_id
+  email      = "REDACTED_EMAIL"
+}
+
+resource "cloudflare_email_routing_rule" "jci_omh" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "Email Rule for jci-omh"
+  enabled = true
+
+  matcher {
+    type  = "literal"
+    field = "to"
+    value = "jci-omh@${var.domain_name}"
+  }
+
+  action {
+    type  = "forward"
+    value = [
+      local.catchall_email
+      # Temporarily disabled for testing - will re-add after initial verification
+      # cloudflare_email_routing_address.jci_stephen.email
+    ]
+  }
+}
