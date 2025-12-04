@@ -51,7 +51,7 @@ resource "cloudflare_record" "app_preview" {
 
 resource "cloudflare_record" "mail" {
   zone_id = cloudflare_zone.domain.id
-  name    = "main"
+  name    = "mail"
   content = var.domain_name
   type    = "CNAME"
   proxied = false
@@ -82,6 +82,14 @@ resource "cloudflare_record" "spf" {
   type    = "TXT"
 }
 
+# Add DMARC record for email deliverability
+resource "cloudflare_record" "dmarc" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "_dmarc"
+  content = "v=DMARC1; p=none; rua=mailto:admin@trakrf.id"
+  type    = "TXT"
+}
+
 # Enable Email Routing for the zone
 resource "cloudflare_email_routing_settings" "main" {
   zone_id = cloudflare_zone.domain.id
@@ -96,6 +104,7 @@ locals {
     abuse   = local.catchall_email
     admin   = local.catchall_email
     info    = local.catchall_email
+    mike    = local.catchall_email
     sales   = local.catchall_email
     support = local.catchall_email
   }
@@ -163,11 +172,57 @@ resource "cloudflare_email_routing_rule" "jci_omh" {
   }
 
   action {
-    type  = "forward"
+    type = "forward"
     value = [
       local.catchall_email
       # Temporarily disabled for testing - will re-add after initial verification
       # cloudflare_email_routing_address.jci_stephen.email
     ]
+  }
+}
+
+# Tim alias - external destination
+resource "cloudflare_email_routing_address" "tim" {
+  account_id = var.account_id
+  email      = "tim.buckley@rfidready.net"
+}
+
+resource "cloudflare_email_routing_rule" "tim" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "Email Rule for tim"
+  enabled = true
+
+  matcher {
+    type  = "literal"
+    field = "to"
+    value = "tim@${var.domain_name}"
+  }
+
+  action {
+    type  = "forward"
+    value = [cloudflare_email_routing_address.tim.email]
+  }
+}
+
+# Nick alias - external destination
+resource "cloudflare_email_routing_address" "nick" {
+  account_id = var.account_id
+  email      = "nicholusmuwonge@gmail.com"
+}
+
+resource "cloudflare_email_routing_rule" "nick" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "Email Rule for nick"
+  enabled = true
+
+  matcher {
+    type  = "literal"
+    field = "to"
+    value = "nick@${var.domain_name}"
+  }
+
+  action {
+    type  = "forward"
+    value = [cloudflare_email_routing_address.nick.email]
   }
 }
