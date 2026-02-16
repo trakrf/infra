@@ -226,3 +226,26 @@ resource "cloudflare_email_routing_rule" "nick" {
     value = [cloudflare_email_routing_address.nick.email]
   }
 }
+
+# Peter alias - external destination
+resource "cloudflare_email_routing_address" "peter" {
+  account_id = var.account_id
+  email      = "REDACTED_EMAIL"
+}
+
+resource "cloudflare_email_routing_rule" "peter" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "Email Rule for peter"
+  enabled = true
+
+  matcher {
+    type  = "literal"
+    field = "to"
+    value = "peter@${var.domain_name}"
+  }
+
+  action {
+    type  = "forward"
+    value = [cloudflare_email_routing_address.peter.email]
+  }
+}
