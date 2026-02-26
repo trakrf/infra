@@ -49,6 +49,15 @@ resource "cloudflare_record" "app_preview" {
   proxied = false # DNS-only mode for Railway deployments
 }
 
+# Docs subdomain for Cloudflare Pages (Docusaurus)
+resource "cloudflare_record" "docs" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "docs"
+  content = cloudflare_pages_project.docs.subdomain
+  type    = "CNAME"
+  proxied = true
+}
+
 resource "cloudflare_record" "mail" {
   zone_id = cloudflare_zone.domain.id
   name    = "mail"
