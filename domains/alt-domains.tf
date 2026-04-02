@@ -103,33 +103,13 @@ resource "cloudflare_zone_settings_override" "alt_settings" {
   }
 }
 
-# --- getrf.id Email Routing ---
+# --- DMARC Records ---
 
-resource "cloudflare_email_routing_settings" "getrf_id" {
-  zone_id = cloudflare_zone.alt["getrf_id"].id
-  enabled = true
+resource "cloudflare_record" "alt_dmarc" {
+  for_each = local.alt_domains
+  zone_id  = cloudflare_zone.alt[each.key].id
+  name     = "_dmarc"
+  content  = "v=DMARC1; p=none; rua=mailto:admin@trakrf.id"
+  type     = "TXT"
 }
 
-resource "cloudflare_record" "getrf_id_spf" {
-  zone_id = cloudflare_zone.alt["getrf_id"].id
-  name    = "@"
-  content = "v=spf1 include:_spf.mx.cloudflare.net ~all"
-  type    = "TXT"
-}
-
-resource "cloudflare_email_routing_rule" "getrf_id_az1" {
-  zone_id = cloudflare_zone.alt["getrf_id"].id
-  name    = "Email Rule for az1"
-  enabled = true
-
-  matcher {
-    type  = "literal"
-    field = "to"
-    value = "az1@getrf.id"
-  }
-
-  action {
-    type  = "forward"
-    value = [local.catchall_email]
-  }
-}
