@@ -1,5 +1,6 @@
 /bin/
 /node_modules/
+.env
 .env.*
 kubeconfig.yml
 .idea
@@ -32,6 +33,9 @@ terraform.rc
 
 # Ignore plan output files
 *tfplan*
+
+# Backend config generated from env vars (contains account ID)
+backend.conf
 
 # Ignore .terraform.lock.hcl file (uncomment if you prefer not to version this file)
 # .terraform.lock.hcl
