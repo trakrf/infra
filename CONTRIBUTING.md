@@ -41,8 +41,8 @@ Thank you for your interest in contributing! This repo manages TrakRF's cloud in
 
 2. **Validate infrastructure code**
    ```bash
-   tofu -chdir=domains validate
-   tofu -chdir=aws validate
+   tofu -chdir=terraform/cloudflare validate
+   tofu -chdir=terraform/aws validate
    ```
 
 3. **Test in isolated environment**

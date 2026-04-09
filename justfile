@@ -9,9 +9,11 @@ r2_endpoint := "https://" + env_var("CLOUDFLARE_ACCOUNT_ID") + ".r2.cloudflarest
 
 default: list
 
+# List available recipes
 list:
   @just --list
 
+# Print environment variables
 env:
     @env
 
@@ -19,24 +21,28 @@ env:
 _backend-conf dir:
     @printf 'endpoints = { s3 = "%s" }\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
 
+# One-time setup: create R2 state bucket and API tokens
 bootstrap:
     @echo "Bootstrapping cloudflare resources on ${DOMAIN_NAME}"
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=bootstrap init
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=bootstrap plan -out=tfplan
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=bootstrap apply tfplan | grep -v '<sensitive>'
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=bootstrap output -show-sensitive | grep -E '(secret|infra)'
+    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap init
+    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap plan -out=tfplan
+    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap apply tfplan | grep -v '<sensitive>'
+    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap output -show-sensitive | grep -E '(secret|infra)'
 
-domains: (_backend-conf "domains")
-    @echo "Planning cloudflare resources on ${DOMAIN_NAME}"
-    @tofu -chdir=domains init -backend-config=backend.conf
-    @tofu -chdir=domains plan -out=tfplan
-    @tofu -chdir=domains apply tfplan
+# Plan and apply Cloudflare DNS and Pages resources
+cloudflare: (_backend-conf "terraform/cloudflare")
+    @echo "Planning Cloudflare resources on ${DOMAIN_NAME}"
+    @tofu -chdir=terraform/cloudflare init -backend-config=backend.conf
+    @tofu -chdir=terraform/cloudflare plan -out=tfplan
+    @tofu -chdir=terraform/cloudflare apply tfplan
 
-aws: (_backend-conf "aws")
+# Plan and apply AWS infrastructure (Route53, EKS)
+aws: (_backend-conf "terraform/aws")
     @echo "Planning AWS infrastructure..."
-    @tofu -chdir=aws init -backend-config=backend.conf
-    @tofu -chdir=aws plan -out=tfplan
-    @tofu -chdir=aws apply tfplan
+    @tofu -chdir=terraform/aws init -backend-config=backend.conf
+    @tofu -chdir=terraform/aws plan -out=tfplan
+    @tofu -chdir=terraform/aws apply tfplan
 
+# List objects in the R2 terraform state bucket
 s3-ls:
     @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}"
