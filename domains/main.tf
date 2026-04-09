@@ -58,40 +58,7 @@ resource "cloudflare_record" "docs" {
   proxied = true
 }
 
-resource "cloudflare_record" "mail" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "mail"
-  content = var.domain_name
-  type    = "CNAME"
-  proxied = false
-}
-
-# # Add required MX records
-# resource "cloudflare_record" "mx_1" {
-#   zone_id  = cloudflare_zone.domain.id
-#   name     = "@"
-#   content  = "isaac.mx.cloudflare.net"
-#   type     = "MX"
-#   priority = 40
-# }
-#
-# resource "cloudflare_record" "mx_2" {
-#   zone_id  = cloudflare_zone.domain.id
-#   name     = "@"
-#   content  = "linda.mx.cloudflare.net"
-#   type     = "MX"
-#   priority = 80
-# }
-
-# Add required SPF record
-resource "cloudflare_record" "spf" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "@"
-  content = "v=spf1 include:_spf.mx.cloudflare.net ~all"
-  type    = "TXT"
-}
-
-# Add DMARC record for email deliverability
+# DMARC record for email deliverability
 resource "cloudflare_record" "dmarc" {
   zone_id = cloudflare_zone.domain.id
   name    = "_dmarc"
@@ -99,50 +66,7 @@ resource "cloudflare_record" "dmarc" {
   type    = "TXT"
 }
 
-# Enable Email Routing for the zone
-resource "cloudflare_email_routing_settings" "main" {
-  zone_id = cloudflare_zone.domain.id
-  enabled = true
-}
 
-# todo: change these aliases to groups
-locals {
-  catchall_email = "REDACTED_EMAIL"
-
-  email_aliases = {
-    abuse   = local.catchall_email
-    admin   = local.catchall_email
-    info    = local.catchall_email
-    mike    = local.catchall_email
-    sales   = local.catchall_email
-    support = local.catchall_email
-  }
-}
-
-resource "cloudflare_email_routing_address" "example_email_routing_address" {
-  account_id = var.account_id
-  email      = local.catchall_email
-}
-
-# Create a specific email routing rule (example)
-resource "cloudflare_email_routing_rule" "alias" {
-  for_each = local.email_aliases
-
-  zone_id = cloudflare_zone.domain.id
-  name    = "Email Rule for ${each.key}"
-  enabled = true
-
-  matcher {
-    type  = "literal"
-    field = "to"
-    value = "${each.key}@${var.domain_name}"
-  }
-
-  action {
-    type  = "forward"
-    value = [each.value]
-  }
-}
 
 # Zone Settings
 resource "cloudflare_zone_settings_override" "domain_settings" {
@@ -162,99 +86,3 @@ resource "cloudflare_zone_settings_override" "domain_settings" {
   }
 }
 
-# Customer-specific email routing setup
-# JCI-OMH: Multi-destination alias (differs from single-destination pattern above)
-resource "cloudflare_email_routing_address" "jci_stephen" {
-  account_id = var.account_id
-  email      = "REDACTED_EMAIL"
-}
-
-resource "cloudflare_email_routing_rule" "jci_omh" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "Email Rule for jci-omh"
-  enabled = true
-
-  matcher {
-    type  = "literal"
-    field = "to"
-    value = "jci-omh@${var.domain_name}"
-  }
-
-  action {
-    type = "forward"
-    value = [
-      local.catchall_email
-      # Temporarily disabled for testing - will re-add after initial verification
-      # cloudflare_email_routing_address.jci_stephen.email
-    ]
-  }
-}
-
-# Tim alias - external destination
-resource "cloudflare_email_routing_address" "tim" {
-  account_id = var.account_id
-  email      = "REDACTED_EMAIL"
-}
-
-resource "cloudflare_email_routing_rule" "tim" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "Email Rule for tim"
-  enabled = true
-
-  matcher {
-    type  = "literal"
-    field = "to"
-    value = "tim@${var.domain_name}"
-  }
-
-  action {
-    type  = "forward"
-    value = [cloudflare_email_routing_address.tim.email]
-  }
-}
-
-# Nick alias - external destination
-resource "cloudflare_email_routing_address" "nick" {
-  account_id = var.account_id
-  email      = "REDACTED_EMAIL"
-}
-
-resource "cloudflare_email_routing_rule" "nick" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "Email Rule for nick"
-  enabled = true
-
-  matcher {
-    type  = "literal"
-    field = "to"
-    value = "nick@${var.domain_name}"
-  }
-
-  action {
-    type  = "forward"
-    value = [cloudflare_email_routing_address.nick.email]
-  }
-}
-
-# Peter alias - external destination
-resource "cloudflare_email_routing_address" "peter" {
-  account_id = var.account_id
-  email      = "REDACTED_EMAIL"
-}
-
-resource "cloudflare_email_routing_rule" "peter" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "Email Rule for peter"
-  enabled = true
-
-  matcher {
-    type  = "literal"
-    field = "to"
-    value = "peter@${var.domain_name}"
-  }
-
-  action {
-    type  = "forward"
-    value = [cloudflare_email_routing_address.peter.email]
-  }
-}
