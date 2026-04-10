@@ -11,6 +11,10 @@ spec:
     targetRevision: "83.*"
     helm:
       values: |
+        prometheusOperator:
+          admissionWebhooks:
+            patch:
+              enabled: false
         prometheus:
           prometheusSpec:
             resources:
