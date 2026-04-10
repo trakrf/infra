@@ -43,3 +43,26 @@ aws: (_backend-conf "terraform/aws")
 # List objects in the R2 terraform state bucket
 s3-ls:
     @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
+
+# Install ArgoCD via Helm and apply root app-of-apps
+argocd-bootstrap:
+    @echo "Adding ArgoCD Helm repo..."
+    @helm repo add argo https://argoproj.github.io/argo-helm
+    @helm repo update argo
+    @echo "Installing ArgoCD into argocd namespace..."
+    @helm install argocd argo/argo-cd --namespace argocd --create-namespace -f argocd/bootstrap/values.yaml
+    @echo "Waiting for ArgoCD server to be ready..."
+    @kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
+    @echo "Applying root app-of-apps..."
+    @kubectl apply -f argocd/projects/trakrf.yaml
+    @kubectl apply -f argocd/root.yaml
+    @echo "ArgoCD bootstrap complete. Run 'just argocd-password' for the admin password."
+
+# Fetch ArgoCD initial admin password
+argocd-password:
+    @kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d && echo
+
+# Port-forward ArgoCD UI to localhost:8080
+argocd-ui:
+    @echo "ArgoCD UI at https://localhost:8080 (admin / <just argocd-password>)"
+    @kubectl port-forward svc/argocd-server -n argocd 8080:443
