@@ -9,6 +9,7 @@ spec:
     - "https://github.com/trakrf/infra.git"
     - "https://argoproj.github.io/argo-helm"
     - "registry.developers.crunchydata.com/crunchydata/*"
+    - "registry.developers.crunchydata.com/crunchydata"
     - "https://prometheus-community.github.io/helm-charts"
   destinations:
     - server: https://kubernetes.default.svc
