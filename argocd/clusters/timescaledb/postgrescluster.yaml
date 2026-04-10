@@ -16,6 +16,9 @@ spec:
   instances:
     - name: instance1
       replicas: 1
+      securityContext:
+        runAsUser: 1000
+        fsGroup: 1000
       dataVolumeClaimSpec:
         accessModes: [ReadWriteOnce]
         storageClassName: gp3
