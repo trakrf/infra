@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trakrf-backend
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/description: "Placeholder — chart not yet created"
+spec:
+  project: trakrf
+  source:
+    repoURL: git@github.com:trakrf/infra.git
+    targetRevision: main
+    path: helm/trakrf-backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trakrf
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

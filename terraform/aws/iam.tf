@@ -26,7 +26,7 @@ module "crunchy_irsa" {
   oidc_providers = {
     main = {
       provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["crunchy-system:crunchy-operator"]
+      namespace_service_accounts = ["crunchy-postgres:crunchy-operator"]
     }
   }
 
