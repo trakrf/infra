@@ -33,7 +33,7 @@ output "cluster_certificate_authority" {
 
 output "kubectl_config_command" {
   description = "Command to update kubeconfig for this cluster"
-  value       = "aws eks update-kubeconfig --region us-east-2 --name ${module.eks.cluster_name}"
+  value       = "aws eks update-kubeconfig --region ${local.region} --name ${module.eks.cluster_name}"
 }
 
 # ECR

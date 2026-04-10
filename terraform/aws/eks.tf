@@ -52,6 +52,7 @@ resource "aws_eks_addon" "ebs_csi" {
   addon_version            = data.aws_eks_addon_version.ebs_csi.version
   service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
   resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
 
   tags = local.common_tags
 }
