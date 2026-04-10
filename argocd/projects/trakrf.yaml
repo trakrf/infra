@@ -21,6 +21,8 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: monitoring
   clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
     - group: "*"
       kind: CustomResourceDefinition
     - group: "*"
