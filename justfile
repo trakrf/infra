@@ -63,7 +63,7 @@ argocd-bootstrap:
 argocd-password:
     @kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d && echo
 
-# Port-forward ArgoCD UI to localhost:8080
+# Port-forward ArgoCD UI to :8080 (all interfaces)
 argocd-ui:
-    @echo "ArgoCD UI at https://localhost:8080 (admin / <just argocd-password>)"
-    @kubectl port-forward svc/argocd-server -n argocd 8080:443
+    @echo "ArgoCD UI at https://<host-ip>:8080 (admin / <just argocd-password>)"
+    @kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
