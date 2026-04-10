@@ -1,0 +1,52 @@
+# ArgoCD Helm values — minimal bootstrap for trakrf-demo EKS cluster
+# Chart: argo/argo-cd ~9.5
+# After bootstrap, ArgoCD self-manages via app-of-apps pattern.
+# Changes to these values take effect via the self-management Application in argocd/applications/argocd.yaml.
+
+global:
+  domain: ""  # No ingress — access via port-forward
+
+server:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "ARGOCD_IRSA_ROLE_ARN"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
