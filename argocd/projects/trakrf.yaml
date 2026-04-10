@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: trakrf
+  namespace: argocd
+spec:
+  description: TrakRF platform workloads
+  sourceRepos:
+    - "git@github.com:trakrf/infra.git"
+    - "https://argoproj.github.io/argo-helm"
+    - "registry.developers.crunchydata.com/crunchydata/*"
+    - "https://prometheus-community.github.io/helm-charts"
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+    - server: https://kubernetes.default.svc
+      namespace: crunchy-postgres
+    - server: https://kubernetes.default.svc
+      namespace: trakrf
+    - server: https://kubernetes.default.svc
+      namespace: monitoring
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: CustomResourceDefinition
+    - group: "*"
+      kind: ClusterRole
+    - group: "*"
+      kind: ClusterRoleBinding
+    - group: "admissionregistration.k8s.io"
+      kind: MutatingWebhookConfiguration
+    - group: "admissionregistration.k8s.io"
+      kind: ValidatingWebhookConfiguration
+    - group: "apiextensions.k8s.io"
+      kind: "*"
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
