@@ -62,3 +62,41 @@ data "aws_eks_addon_version" "ebs_csi" {
   kubernetes_version = module.eks.cluster_version
   most_recent        = true
 }
+
+# gp3 as default StorageClass — replaces the legacy gp2 in-tree provisioner
+resource "kubernetes_storage_class" "gp3" {
+  metadata {
+    name = "gp3"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+
+  storage_provisioner    = "ebs.csi.aws.com"
+  reclaim_policy         = "Delete"
+  volume_binding_mode    = "WaitForFirstConsumer"
+  allow_volume_expansion = true
+
+  parameters = {
+    type      = "gp3"
+    encrypted = "true"
+  }
+
+  depends_on = [aws_eks_addon.ebs_csi]
+}
+
+# Remove default annotation from legacy gp2 StorageClass
+resource "kubernetes_annotations" "gp2_non_default" {
+  api_version = "storage.k8s.io/v1"
+  kind        = "StorageClass"
+  metadata {
+    name = "gp2"
+  }
+  annotations = {
+    "storageclass.kubernetes.io/is-default-class" = "false"
+  }
+
+  force = true
+
+  depends_on = [module.eks]
+}
