@@ -15,8 +15,7 @@ data "terraform_remote_state" "aws" {
     skip_metadata_api_check     = true
     use_path_style              = true
 
-    access_key = var.aws_access_key_id
-    secret_key = var.aws_secret_access_key
+    profile = "cloudflare-r2"
   }
 }
 
