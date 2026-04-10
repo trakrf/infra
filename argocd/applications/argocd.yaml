@@ -16,7 +16,7 @@ spec:
         server:
           serviceAccount:
             annotations:
-              eks.amazonaws.com/role-arn: "ARGOCD_IRSA_ROLE_ARN"
+              eks.amazonaws.com/role-arn: "arn:aws:iam::252374924199:role/trakrf-demo-argocd"
           resources:
             requests:
               cpu: 100m
