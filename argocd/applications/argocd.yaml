@@ -10,7 +10,6 @@ spec:
     chart: argo-cd
     targetRevision: "9.5.*"
     helm:
-      valueFiles: []
       values: |
         global:
           domain: ""

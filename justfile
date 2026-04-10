@@ -46,6 +46,7 @@ s3-ls:
 
 # Install ArgoCD via Helm and apply root app-of-apps
 argocd-bootstrap:
+    @grep -rq 'ARGOCD_IRSA_ROLE_ARN' argocd/ && { echo "ERROR: Replace ARGOCD_IRSA_ROLE_ARN placeholder in argocd/ before bootstrapping."; echo "Get the ARN with: tofu -chdir=terraform/aws output -json irsa_role_arns | jq -r .argocd"; exit 1; } || true
     @echo "Adding ArgoCD Helm repo..."
     @helm repo add argo https://argoproj.github.io/argo-helm
     @helm repo update argo
