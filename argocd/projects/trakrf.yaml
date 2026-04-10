@@ -6,7 +6,7 @@ metadata:
 spec:
   description: TrakRF platform workloads
   sourceRepos:
-    - "git@github.com:trakrf/infra.git"
+    - "https://github.com/trakrf/infra.git"
     - "https://argoproj.github.io/argo-helm"
     - "registry.developers.crunchydata.com/crunchydata/*"
     - "https://prometheus-community.github.io/helm-charts"

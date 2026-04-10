@@ -8,7 +8,7 @@ metadata:
 spec:
   project: trakrf
   source:
-    repoURL: git@github.com:trakrf/infra.git
+    repoURL: https://github.com/trakrf/infra.git
     targetRevision: main
     path: helm/trakrf-backend
   destination:
