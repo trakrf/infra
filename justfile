@@ -1,9 +1,6 @@
 export TF_VAR_account_id := env_var("CLOUDFLARE_ACCOUNT_ID")
 export TF_VAR_bucket_name := env_var("CLOUDFLARE_TF_STATE_BUCKET")
 export TF_VAR_domain_name := env_var("DOMAIN_NAME")
-export TF_VAR_aws_access_key_id := env_var("AWS_ACCESS_KEY_ID")
-export TF_VAR_aws_secret_access_key := env_var("AWS_SECRET_ACCESS_KEY")
-export AWS_DEFAULT_REGION := "auto"
 
 r2_endpoint := "https://" + env_var("CLOUDFLARE_ACCOUNT_ID") + ".r2.cloudflarestorage.com"
 
@@ -45,4 +42,4 @@ aws: (_backend-conf "terraform/aws")
 
 # List objects in the R2 terraform state bucket
 s3-ls:
-    @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}"
+    @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
