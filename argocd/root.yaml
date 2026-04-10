@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:trakrf/infra.git
+    repoURL: https://github.com/trakrf/infra.git
     targetRevision: main
     path: argocd/applications
     directory:
