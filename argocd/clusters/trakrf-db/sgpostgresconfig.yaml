@@ -1,0 +1,13 @@
+apiVersion: stackgres.io/v1
+kind: SGPostgresConfig
+metadata:
+  name: trakrf-pgconfig
+  namespace: trakrf-db
+spec:
+  postgresVersion: "17"
+  postgresql.conf:
+    shared_preload_libraries: 'pg_stat_statements,auto_explain,timescaledb'
+    timescaledb.license: 'timescale'
+    shared_buffers: '256MB'
+    work_mem: '16MB'
+    password_encryption: 'scram-sha-256'

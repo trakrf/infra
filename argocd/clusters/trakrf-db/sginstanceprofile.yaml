@@ -1,0 +1,11 @@
+apiVersion: stackgres.io/v1
+kind: SGInstanceProfile
+metadata:
+  name: trakrf-profile
+  namespace: trakrf-db
+spec:
+  cpu: "2"
+  memory: "4Gi"
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
