@@ -1,0 +1,51 @@
+apiVersion: stackgres.io/v1beta1
+kind: SGScript
+metadata:
+  name: trakrf-init
+  namespace: trakrf-db
+spec:
+  managedVersions: true
+  continueOnError: false
+  scripts:
+    - name: create-app-user
+      script: |
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'trakrf-app') THEN
+            CREATE ROLE "trakrf-app" LOGIN;
+          END IF;
+        END $$;
+    - name: set-app-password
+      scriptFrom:
+        secretKeyRef:
+          name: trakrf-db-passwords
+          key: set-app-password.sql
+    - name: create-migrate-user
+      script: |
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'trakrf-migrate') THEN
+            CREATE ROLE "trakrf-migrate" LOGIN CREATEDB;
+          END IF;
+        END $$;
+    - name: set-migrate-password
+      scriptFrom:
+        secretKeyRef:
+          name: trakrf-db-passwords
+          key: set-migrate-password.sql
+    - name: create-database
+      script: |
+        SELECT 'CREATE DATABASE trakrf OWNER "trakrf-migrate"'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'trakrf')
+        \gexec
+    - name: enable-timescaledb
+      database: trakrf
+      script: |
+        CREATE EXTENSION IF NOT EXISTS timescaledb;
+    - name: grant-app-access
+      database: trakrf
+      script: |
+        GRANT CONNECT ON DATABASE trakrf TO "trakrf-app";
+        GRANT USAGE ON SCHEMA public TO "trakrf-app";
+        ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate"
+          IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app";

@@ -16,23 +16,6 @@ module "ebs_csi_irsa" {
   tags = local.common_tags
 }
 
-# CrunchyData operator — stub role, policies added when operator is deployed
-module "crunchy_irsa" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.0"
-
-  role_name = "${var.cluster_name}-crunchy-operator"
-
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["crunchy-postgres:crunchy-operator"]
-    }
-  }
-
-  tags = local.common_tags
-}
-
 # ArgoCD — stub role, policies added when ArgoCD is deployed
 module "argocd_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
