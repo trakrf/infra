@@ -1,0 +1,59 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: trakrf-db
+  namespace: trakrf-db
+spec:
+  instances: 1
+  imageName: timescale/timescaledb-ha:pg17
+
+  postgresUID: 70
+  postgresGID: 70
+
+  postgresql:
+    parameters:
+      shared_preload_libraries: timescaledb
+      timescaledb.license: timescale
+      password_encryption: scram-sha-256
+
+  bootstrap:
+    initdb:
+      database: trakrf
+      owner: trakrf-migrate
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS timescaledb
+        - |
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'trakrf-app') THEN
+              CREATE ROLE "trakrf-app" LOGIN;
+            END IF;
+          END $$
+        - GRANT CONNECT ON DATABASE trakrf TO "trakrf-app"
+        - GRANT USAGE ON SCHEMA public TO "trakrf-app"
+        - |
+          ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate"
+            IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app"
+
+  managed:
+    roles:
+      - name: trakrf-app
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        passwordSecret:
+          name: trakrf-app-credentials
+      - name: trakrf-migrate
+        ensure: present
+        login: true
+        superuser: false
+        createdb: true
+        createrole: false
+        passwordSecret:
+          name: trakrf-migrate-credentials
+
+  storage:
+    size: 10Gi
+    storageClassName: gp3

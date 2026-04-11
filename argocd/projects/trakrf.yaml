@@ -9,7 +9,7 @@ spec:
     - "https://github.com/trakrf/infra.git"
     - "https://argoproj.github.io/argo-helm"
     - "https://prometheus-community.github.io/helm-charts"
-    - "https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/"
+    - "https://cloudnative-pg.github.io/charts"
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
@@ -20,7 +20,7 @@ spec:
     - server: https://kubernetes.default.svc
       namespace: kube-system
     - server: https://kubernetes.default.svc
-      namespace: stackgres
+      namespace: cnpg-system
     - server: https://kubernetes.default.svc
       namespace: trakrf-db
   clusterResourceWhitelist:
