@@ -7,7 +7,8 @@ spec:
   managedVersions: true
   continueOnError: false
   scripts:
-    - name: create-app-user
+    - id: 0
+      name: create-app-user
       script: |
         DO $$
         BEGIN
@@ -15,12 +16,14 @@ spec:
             CREATE ROLE "trakrf-app" LOGIN;
           END IF;
         END $$;
-    - name: set-app-password
+    - id: 1
+      name: set-app-password
       scriptFrom:
         secretKeyRef:
           name: trakrf-db-passwords
           key: set-app-password.sql
-    - name: create-migrate-user
+    - id: 2
+      name: create-migrate-user
       script: |
         DO $$
         BEGIN
@@ -28,21 +31,25 @@ spec:
             CREATE ROLE "trakrf-migrate" LOGIN CREATEDB;
           END IF;
         END $$;
-    - name: set-migrate-password
+    - id: 3
+      name: set-migrate-password
       scriptFrom:
         secretKeyRef:
           name: trakrf-db-passwords
           key: set-migrate-password.sql
-    - name: create-database
+    - id: 4
+      name: create-database
       script: |
         SELECT 'CREATE DATABASE trakrf OWNER "trakrf-migrate"'
         WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'trakrf')
         \gexec
-    - name: enable-timescaledb
+    - id: 5
+      name: enable-timescaledb
       database: trakrf
       script: |
         CREATE EXTENSION IF NOT EXISTS timescaledb;
-    - name: grant-app-access
+    - id: 6
+      name: grant-app-access
       database: trakrf
       script: |
         GRANT CONNECT ON DATABASE trakrf TO "trakrf-app";
