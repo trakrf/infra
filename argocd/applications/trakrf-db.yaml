@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trakrf-db
+  namespace: argocd
+spec:
+  project: trakrf
+  source:
+    repoURL: https://github.com/trakrf/infra.git
+    path: argocd/clusters/trakrf-db
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trakrf-db
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
