@@ -5,7 +5,11 @@ metadata:
   namespace: trakrf-db
 spec:
   instances: 1
-  imageName: timescale/timescaledb-ha:pg17
+  imageCatalogRef:
+    apiGroup: postgresql.cnpg.io
+    kind: ImageCatalog
+    name: timescaledb
+    major: 17
 
   postgresUID: 70
   postgresGID: 70
