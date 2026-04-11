@@ -46,8 +46,7 @@ output "ecr_repository_url" {
 output "irsa_role_arns" {
   description = "IRSA role ARNs for Helm values"
   value = {
-    ebs_csi  = module.ebs_csi_irsa.iam_role_arn
-    crunchy  = module.crunchy_irsa.iam_role_arn
-    argocd   = module.argocd_irsa.iam_role_arn
+    ebs_csi = module.ebs_csi_irsa.iam_role_arn
+    argocd  = module.argocd_irsa.iam_role_arn
   }
 }
