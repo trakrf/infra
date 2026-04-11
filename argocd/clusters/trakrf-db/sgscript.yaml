@@ -43,13 +43,13 @@ spec:
       script: |
         CREATE DATABASE trakrf OWNER "trakrf-migrate";
     - id: 5
-      version: 1
+      version: 2
       name: enable-timescaledb
       database: trakrf
       script: |
         CREATE EXTENSION IF NOT EXISTS timescaledb;
     - id: 6
-      version: 1
+      version: 2
       name: grant-app-access
       database: trakrf
       script: |
