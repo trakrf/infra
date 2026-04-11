@@ -8,20 +8,21 @@ spec:
   sourceRepos:
     - "https://github.com/trakrf/infra.git"
     - "https://argoproj.github.io/argo-helm"
-    - "registry.developers.crunchydata.com/crunchydata/*"
-    - "registry.developers.crunchydata.com/crunchydata"
     - "https://prometheus-community.github.io/helm-charts"
+    - "https://stackgres.io/downloads/stackgres-k8s/stackgres/helm/"
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
-    - server: https://kubernetes.default.svc
-      namespace: crunchy-postgres
     - server: https://kubernetes.default.svc
       namespace: trakrf
     - server: https://kubernetes.default.svc
       namespace: monitoring
     - server: https://kubernetes.default.svc
       namespace: kube-system
+    - server: https://kubernetes.default.svc
+      namespace: stackgres
+    - server: https://kubernetes.default.svc
+      namespace: trakrf-db
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
