@@ -39,7 +39,6 @@ spec:
           key: set-migrate-password.sql
     - id: 4
       name: create-database
-      wrapInTransaction: "NONE"
       script: |
         CREATE DATABASE trakrf OWNER "trakrf-migrate";
     - id: 5
