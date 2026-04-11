@@ -39,10 +39,9 @@ spec:
           key: set-migrate-password.sql
     - id: 4
       name: create-database
+      wrapInTransaction: "NONE"
       script: |
-        SELECT 'CREATE DATABASE trakrf OWNER "trakrf-migrate"'
-        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'trakrf')
-        \gexec
+        CREATE DATABASE trakrf OWNER "trakrf-migrate";
     - id: 5
       name: enable-timescaledb
       database: trakrf
