@@ -38,15 +38,18 @@ spec:
           name: trakrf-db-passwords
           key: set-migrate-password.sql
     - id: 4
+      version: 1
       name: create-database
       script: |
         CREATE DATABASE trakrf OWNER "trakrf-migrate";
     - id: 5
+      version: 1
       name: enable-timescaledb
       database: trakrf
       script: |
         CREATE EXTENSION IF NOT EXISTS timescaledb;
     - id: 6
+      version: 1
       name: grant-app-access
       database: trakrf
       script: |
