@@ -16,7 +16,6 @@ spec:
 
   postgresql:
     parameters:
-      shared_preload_libraries: timescaledb
       timescaledb.license: timescale
       password_encryption: scram-sha-256
 
