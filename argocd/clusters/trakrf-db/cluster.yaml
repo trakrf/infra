@@ -5,7 +5,7 @@ metadata:
   namespace: trakrf-db
 spec:
   instances: 1
-  imageName: ghcr.io/clevyr/cloudnativepg-timescale:17-ts2
+  imageName: ghcr.io/clevyr/cloudnativepg-timescale:17.2-ts2.18
 
   postgresql:
     shared_preload_libraries:
