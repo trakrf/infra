@@ -1,0 +1,6 @@
+apiVersion: v2
+name: trakrf-ingester
+description: TrakRF MQTT → PostgreSQL ingester (Redpanda Connect)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,51 @@
+# Default values for trakrf-ingester.
+
+replicaCount: 1
+
+# Stock Redpanda Connect image. Pin a specific tag — the platform Dockerfile
+# does not currently pin, which is a separate concern (TRA-84 / upstream fix).
+image:
+  repository: docker.redpanda.com/redpandadata/connect
+  tag: "4.40.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+podSecurityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Database (CNPG) — same pattern as trakrf-backend.
+database:
+  credentialsSecret: trakrf-app-credentials
+  user: trakrf-app
+  host: trakrf-db-rw
+  port: 5432
+  name: trakrf
+  sslmode: require
+
+# MQTT config
+mqtt:
+  # Non-secret
+  clientId: trakrf-ingester
+  topic: "trakrf/scans/#"
+  # Secret. Full URL including credentials, e.g.
+  #   mqtts://user:pass@broker.emqxcloud.com:8883
+  url: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

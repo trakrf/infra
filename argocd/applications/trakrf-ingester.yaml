@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trakrf-ingester
+  namespace: argocd
+spec:
+  project: trakrf
+  source:
+    repoURL: https://github.com/trakrf/infra.git
+    targetRevision: main
+    path: helm/trakrf-ingester
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trakrf
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

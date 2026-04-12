@@ -7,11 +7,11 @@ spec:
   project: trakrf
   source:
     repoURL: https://github.com/trakrf/infra.git
-    path: argocd/clusters/trakrf-db
+    path: argocd/clusters/trakrf
     targetRevision: main
   destination:
     server: https://kubernetes.default.svc
-    namespace: trakrf-db
+    namespace: trakrf
   syncPolicy:
     automated:
       prune: true

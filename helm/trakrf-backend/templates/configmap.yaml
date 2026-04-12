@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trakrf-backend.fullname" . }}
+  labels:
+    {{- include "trakrf-backend.labels" . | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.config.appEnv | quote }}
+  BACKEND_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  SERVICE_NAME: {{ .Values.config.serviceName | quote }}
+  BACKEND_CORS_ORIGIN: {{ .Values.config.corsOrigin | quote }}
+  JWT_EXPIRATION: {{ .Values.config.jwtExpirationSeconds | quote }}
+  BACKEND_PORT: {{ .Values.service.port | quote }}

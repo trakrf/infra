@@ -7,6 +7,9 @@ kubeconfig.yml
 .idea
 .DS_Store
 
+# Chart-local secret overrides (per-release, never committed)
+helm/*/values.secret.yaml
+
 # Local .terraform directories
 **/.terraform/*
 
