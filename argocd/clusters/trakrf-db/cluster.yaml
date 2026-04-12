@@ -5,18 +5,9 @@ metadata:
   namespace: trakrf-db
 spec:
   instances: 1
-  imageCatalogRef:
-    apiGroup: postgresql.cnpg.io
-    kind: ImageCatalog
-    name: timescaledb
-    major: 17
-
-  postgresUID: 70
-  postgresGID: 70
 
   postgresql:
     parameters:
-      timescaledb.license: timescale
       password_encryption: scram-sha-256
 
   bootstrap:
@@ -24,7 +15,6 @@ spec:
       database: trakrf
       owner: trakrf-migrate
       postInitApplicationSQL:
-        - CREATE EXTENSION IF NOT EXISTS timescaledb
         - |
           DO $$
           BEGIN
