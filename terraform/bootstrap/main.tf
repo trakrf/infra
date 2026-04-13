@@ -1,7 +1,7 @@
 resource "cloudflare_r2_bucket" "terraform_state" {
   account_id = var.account_id
   name       = var.bucket_name
-  location   = "WNAM"  # North America location
+  location   = "WNAM" # North America location
 }
 
 # Create an R2 API token for the bucket
@@ -26,26 +26,26 @@ resource "cloudflare_api_token" "terraform_infrastructure" {
   policy {
     permission_groups = [
       data.cloudflare_api_token_permission_groups.all.zone[
-      "Zone Read"
+        "Zone Read"
       ],
       data.cloudflare_api_token_permission_groups.all.zone[
-      "Zone Write"
+        "Zone Write"
       ],
       data.cloudflare_api_token_permission_groups.all.zone[
-      "DNS Read"
+        "DNS Read"
       ],
       data.cloudflare_api_token_permission_groups.all.zone[
-      "DNS Write"
+        "DNS Write"
       ],
       data.cloudflare_api_token_permission_groups.all.account["Email Routing Addresses Read"],
       data.cloudflare_api_token_permission_groups.all.account["Email Routing Addresses Write"],
       data.cloudflare_api_token_permission_groups.all.zone["Email Routing Rules Read"],
       data.cloudflare_api_token_permission_groups.all.zone["Email Routing Rules Write"],
       data.cloudflare_api_token_permission_groups.all.zone[
-      "SSL and Certificates Read"
+        "SSL and Certificates Read"
       ],
       data.cloudflare_api_token_permission_groups.all.zone[
-      "SSL and Certificates Write"
+        "SSL and Certificates Write"
       ],
       data.cloudflare_api_token_permission_groups.all.zone["Zone Settings Read"],
       data.cloudflare_api_token_permission_groups.all.zone["Zone Settings Write"],
