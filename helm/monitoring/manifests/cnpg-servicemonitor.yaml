@@ -1,0 +1,35 @@
+# helm/monitoring/manifests/cnpg-servicemonitor.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cnpg-operator
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: cnpg
+spec:
+  namespaceSelector:
+    matchNames: ["cnpg-system"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudnative-pg
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cnpg-cluster-trakrf-db
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: cnpg
+spec:
+  namespaceSelector:
+    matchNames: ["trakrf"]
+  selector:
+    matchLabels:
+      cnpg.io/cluster: trakrf-db
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
