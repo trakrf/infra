@@ -67,3 +67,11 @@ argocd-password:
 argocd-ui:
     @echo "ArgoCD UI at https://<host-ip>:8080 (admin / <just argocd-password>)"
     @kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
+
+# Sync platform backend migrations into the trakrf-backend chart (TRA-361 temporary path).
+# Remove once migrate.image points at the backend image published by TRA-363.
+sync-migrations:
+    @echo "Syncing migrations from ../platform/backend/migrations/ → helm/trakrf-backend/migrations/"
+    @mkdir -p helm/trakrf-backend/migrations
+    @rsync -av --delete --include='*.up.sql' --exclude='*' ../platform/backend/migrations/ helm/trakrf-backend/migrations/
+    @ls helm/trakrf-backend/migrations/ | wc -l | xargs -I{} echo "Synced {} migration files"
