@@ -2,7 +2,7 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: trakrf-db
-  namespace: trakrf-db
+  namespace: trakrf
 spec:
   instances: 1
   imageName: ghcr.io/clevyr/cloudnativepg-timescale:17.2-ts2.18

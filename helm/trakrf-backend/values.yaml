@@ -1,0 +1,69 @@
+# Default values for trakrf-backend.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/trakrf/backend
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 8080
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# HPA stub — disabled for M1 demo. See TRA-351.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+# Pod security. Backend Dockerfile does not yet run as non-root (TRA-84).
+# Once Dockerfile is fixed, flip runAsNonRoot: true and set runAsUser.
+podSecurityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+# Database (CNPG). PG_URL is assembled from the CNPG-managed role secret.
+database:
+  # Name of CNPG managed.roles passwordSecret (password key)
+  credentialsSecret: trakrf-app-credentials
+  user: trakrf-app
+  host: trakrf-db-rw
+  port: 5432
+  name: trakrf
+  sslmode: require
+
+# Non-secret config (ConfigMap)
+config:
+  appEnv: production
+  logLevel: info
+  serviceName: trakrf-backend
+  corsOrigin: ""
+  jwtExpirationSeconds: "3600"
+
+# Secrets. Values here land in a K8s Secret created by this chart.
+# For real deployments, override via values.secret.yaml (gitignored):
+#   helm upgrade ... -f values.secret.yaml
+secrets:
+  jwtSecret: "change-me"
+  resendApiKey: ""
+  sentryDsn: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
