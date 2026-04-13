@@ -30,6 +30,12 @@ spec:
         - name: ingester
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.metrics.enabled }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+          {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           args:
