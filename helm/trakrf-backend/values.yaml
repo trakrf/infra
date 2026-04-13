@@ -1,5 +1,8 @@
 # Default values for trakrf-backend.
 
+# Drop the doubled `<release>-<chart>` pod/resource name.
+fullnameOverride: trakrf-backend
+
 replicaCount: 1
 
 image:
