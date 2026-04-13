@@ -1,5 +1,8 @@
 # Default values for trakrf-ingester.
 
+# Drop the doubled `<release>-<chart>` pod/resource name.
+fullnameOverride: trakrf-ingester
+
 replicaCount: 1
 
 # Stock Redpanda Connect image. Pin a specific tag — the platform Dockerfile
@@ -27,6 +30,10 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: true
   runAsNonRoot: true
+  # Redpanda Connect image's `connect` user = UID 10001; required for
+  # runAsNonRoot validation (k8s rejects non-numeric image USER).
+  runAsUser: 10001
+  runAsGroup: 10001
 
 # Database (CNPG) — same pattern as trakrf-backend.
 database:
