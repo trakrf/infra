@@ -75,3 +75,41 @@ sync-migrations:
     @mkdir -p helm/trakrf-backend/migrations
     @rsync -av --delete --include='*.up.sql' --exclude='*' ../platform/backend/migrations/ helm/trakrf-backend/migrations/
     @ls helm/trakrf-backend/migrations/ | wc -l | xargs -I{} echo "Synced {} migration files"
+
+# Install kube-prometheus-stack into monitoring namespace
+monitoring-bootstrap:
+    @echo "Adding prometheus-community Helm repo..."
+    @helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+    @helm repo update prometheus-community
+    @echo "Installing kube-prometheus-stack into monitoring namespace..."
+    @helm upgrade --install kube-prometheus-stack \
+      prometheus-community/kube-prometheus-stack \
+      --version 83.4.1 \
+      --namespace monitoring --create-namespace \
+      -f helm/monitoring/values.yaml
+    @echo "Waiting for Grafana to be ready..."
+    @kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=300s
+    @echo "Building dashboards ConfigMap from helm/monitoring/dashboards/..."
+    @kubectl create configmap kube-prometheus-stack-dashboards \
+      --namespace monitoring \
+      --from-file=helm/monitoring/dashboards/ \
+      --dry-run=client -o yaml \
+      | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
+      | kubectl apply --server-side --force-conflicts -f -
+    @echo "Applying out-of-chart manifests (CNPG ServiceMonitor, dashboards)..."
+    @kubectl apply --server-side --force-conflicts -n monitoring -f helm/monitoring/manifests/
+
+# Fetch Grafana admin password
+grafana-password:
+    @kubectl get secret kube-prometheus-stack-grafana -n monitoring \
+      -o jsonpath='{.data.admin-password}' | base64 -d && echo
+
+# Port-forward Grafana UI to :3000 on all interfaces
+grafana-ui:
+    @echo "Grafana at http://<host-ip>:3000 (admin / $(just grafana-password))"
+    @kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80 --address 0.0.0.0
+
+# Port-forward Prometheus UI to :9090 on all interfaces
+prometheus-ui:
+    @echo "Prometheus at http://<host-ip>:9090"
+    @kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090 --address 0.0.0.0

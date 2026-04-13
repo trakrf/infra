@@ -1,0 +1,18 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trakrf-ingester.fullname" . }}
+  labels:
+    {{- include "trakrf-ingester.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None  # headless — no virtual IP needed for scrape
+  selector:
+    {{- include "trakrf-ingester.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

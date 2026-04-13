@@ -7,6 +7,17 @@ metadata:
 data:
   # Mirrors platform/ingester/connect.yaml — envsubst'd at runtime.
   connect.yaml: |
+    {{- if .Values.metrics.enabled }}
+    http:
+      address: 0.0.0.0:{{ .Values.metrics.port }}
+      enabled: true
+      root_path: /
+      debug_endpoints: false
+
+    metrics:
+      prometheus: {}
+    {{- end }}
+
     input:
       mqtt:
         urls:

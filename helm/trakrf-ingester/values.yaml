@@ -53,6 +53,16 @@ mqtt:
   #   mqtts://user:pass@broker.emqxcloud.com:8883
   url: ""
 
+# Prometheus metrics exposed by Redpanda Connect's built-in HTTP server.
+metrics:
+  enabled: true
+  port: 4195
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
 nodeSelector: {}
 tolerations: []
 affinity: {}
