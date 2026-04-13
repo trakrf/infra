@@ -89,6 +89,13 @@ monitoring-bootstrap:
       -f helm/monitoring/values.yaml
     @echo "Waiting for Grafana to be ready..."
     @kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=300s
+    @echo "Building dashboards ConfigMap from helm/monitoring/dashboards/..."
+    @kubectl create configmap kube-prometheus-stack-dashboards \
+      --namespace monitoring \
+      --from-file=helm/monitoring/dashboards/ \
+      --dry-run=client -o yaml \
+      | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
+      | kubectl apply -f -
     @echo "Applying out-of-chart manifests (CNPG ServiceMonitor, dashboards)..."
     @kubectl apply -n monitoring -f helm/monitoring/manifests/
 
