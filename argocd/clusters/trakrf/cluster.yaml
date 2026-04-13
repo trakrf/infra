@@ -23,9 +23,13 @@ spec:
       postInitSQL:
         - CREATE ROLE "trakrf-app" LOGIN
       postInitApplicationSQL:
+        # Pre-create the trakrf schema so schema-scoped grants below have a target.
+        # Migration 000001 uses CREATE SCHEMA IF NOT EXISTS, so this is compatible.
+        - CREATE SCHEMA trakrf AUTHORIZATION "trakrf-migrate"
         - GRANT CONNECT ON DATABASE trakrf TO "trakrf-app"
-        - GRANT USAGE ON SCHEMA public TO "trakrf-app"
-        - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app"
+        - GRANT USAGE ON SCHEMA trakrf TO "trakrf-app"
+        - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app"
+        - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT USAGE, SELECT ON SEQUENCES TO "trakrf-app"
 
   managed:
     roles:
