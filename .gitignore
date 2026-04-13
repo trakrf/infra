@@ -43,3 +43,4 @@ backend.conf
 
 # Ignore .terraform.lock.hcl file (uncomment if you prefer not to version this file)
 # .terraform.lock.hcl
+.claude/
