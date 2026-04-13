@@ -20,7 +20,7 @@
       "title": "Output messages sent (rate/s)",
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
       "targets": [
-        { "expr": "sum(rate(output_sent{job=\"trakrf-ingester\"}[5m]))" }
+        { "expr": "sum(rate(output_batch_sent{job=\"trakrf-ingester\"}[5m]))" }
       ]
     },
     {
@@ -39,7 +39,7 @@
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
       "targets": [
         { "expr": "sum(rate(input_received{job=\"trakrf-ingester\"}[5m]))", "legendFormat": "input" },
-        { "expr": "sum(rate(output_sent{job=\"trakrf-ingester\"}[5m]))", "legendFormat": "output" },
+        { "expr": "sum(rate(output_batch_sent{job=\"trakrf-ingester\"}[5m]))", "legendFormat": "output" },
         { "expr": "sum(rate(output_error{job=\"trakrf-ingester\"}[5m]))", "legendFormat": "errors" }
       ]
     }

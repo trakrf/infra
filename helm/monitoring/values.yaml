@@ -6,6 +6,14 @@ fullnameOverride: kube-prometheus-stack
 
 # Discover ServiceMonitors / PodMonitors / PrometheusRules in any namespace,
 # without requiring our app charts to add a release-specific label.
+# Tolerate webhook unavailability — avoids deadlock where ServiceMonitor /
+# PrometheusRule applies fail because the operator's webhook pod is down.
+prometheusOperator:
+  admissionWebhooks:
+    failurePolicy: Ignore
+    patch:
+      enabled: true
+
 prometheus:
   prometheusSpec:
     serviceMonitorSelectorNilUsesHelmValues: false
@@ -14,6 +22,9 @@ prometheus:
     probeSelectorNilUsesHelmValues: false
     scrapeConfigSelectorNilUsesHelmValues: false
     retention: 15d
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits:   { cpu: 1,    memory: 1Gi }
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -25,6 +36,9 @@ prometheus:
 
 alertmanager:
   alertmanagerSpec:
+    resources:
+      requests: { cpu: 50m,  memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
     storage:
       volumeClaimTemplate:
         spec:
@@ -36,6 +50,9 @@ alertmanager:
 
 grafana:
   defaultDashboardsEnabled: true
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
   persistence:
     enabled: true
     storageClassName: gp3

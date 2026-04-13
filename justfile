@@ -95,9 +95,9 @@ monitoring-bootstrap:
       --from-file=helm/monitoring/dashboards/ \
       --dry-run=client -o yaml \
       | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
-      | kubectl apply -f -
+      | kubectl apply --server-side --force-conflicts -f -
     @echo "Applying out-of-chart manifests (CNPG ServiceMonitor, dashboards)..."
-    @kubectl apply -n monitoring -f helm/monitoring/manifests/
+    @kubectl apply --server-side --force-conflicts -n monitoring -f helm/monitoring/manifests/
 
 # Fetch Grafana admin password
 grafana-password:
