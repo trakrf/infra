@@ -1,19 +1,21 @@
 # helm/monitoring/manifests/cnpg-servicemonitor.yaml
 ---
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: cnpg-operator
   namespace: monitoring
   labels:
     app.kubernetes.io/part-of: cnpg
 spec:
+  # CNPG chart ships no Service for the operator's metrics port, so scrape
+  # the pod directly on container port `metrics` (8080).
   namespaceSelector:
     matchNames: ["cnpg-system"]
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudnative-pg
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 30s
 ---
