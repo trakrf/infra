@@ -47,10 +47,10 @@ module "eks" {
 # EBS CSI driver defined outside the EKS module to avoid circular dependency
 # (addon needs IRSA role ARN, IRSA role needs OIDC provider ARN from EKS module)
 resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
-  addon_version            = data.aws_eks_addon_version.ebs_csi.version
-  service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
+  cluster_name                = module.eks.cluster_name
+  addon_name                  = "aws-ebs-csi-driver"
+  addon_version               = data.aws_eks_addon_version.ebs_csi.version
+  service_account_role_arn    = module.ebs_csi_irsa.iam_role_arn
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 

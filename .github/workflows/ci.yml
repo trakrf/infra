@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tofu-fmt:
+    name: tofu fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+      - run: tofu fmt -check -recursive
+        working-directory: terraform
+
+  tofu-validate:
+    name: tofu validate (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [aws, cloudflare, bootstrap]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+      - run: tofu init -backend=false -input=false
+        working-directory: terraform/${{ matrix.dir }}
+      - run: tofu validate
+        working-directory: terraform/${{ matrix.dir }}
+
+  helm:
+    name: helm lint + template (${{ matrix.chart }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: [trakrf-backend, trakrf-ingester]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint helm/${{ matrix.chart }}
+      - run: helm template helm/${{ matrix.chart }}
