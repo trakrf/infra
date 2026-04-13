@@ -35,3 +35,7 @@ helm lint helm/trakrf-backend
 helm lint helm/trakrf-ingester
 helm template helm/trakrf-backend   # render to stdout for review
 ```
+
+## Monitoring
+
+See `helm/monitoring/README.md` for the kube-prometheus-stack bootstrap.
