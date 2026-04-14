@@ -11,6 +11,7 @@ spec:
     - "https://prometheus-community.github.io/helm-charts"
     - "https://cloudnative-pg.github.io/charts"
     - "https://traefik.github.io/charts"
+    - "https://charts.jetstack.io"
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
@@ -26,6 +27,8 @@ spec:
       namespace: trakrf-db
     - server: https://kubernetes.default.svc
       namespace: traefik
+    - server: https://kubernetes.default.svc
+      namespace: cert-manager
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
