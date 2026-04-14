@@ -33,7 +33,7 @@ Net-new product surface lives on `trakrf.app`; marketing stays on `trakrf.id`. I
 
 - `cert-manager` deployed via ArgoCD (Helm chart, `jetstack/cert-manager`).
 - `ClusterIssuer`: ACME Let's Encrypt production, DNS-01 solver via Cloudflare provider.
-- New Terraform resource **`cloudflare_api_token.cert_manager`** in `terraform/cloudflare/`, scoped `Zone > DNS > Write` on `trakrf.app` only (same minimum-scope pattern as the existing `traefik_dns` token in `d2ai-infra/bootstrap`).
+- New Terraform resource **`cloudflare_api_token.cert_manager`** in `terraform/bootstrap/` (token creation requires account-level `User API Tokens > Edit` which the normal `terraform_infrastructure` token lacks; same placement as the existing `traefik_dns` token in `d2ai-infra/bootstrap`), scoped `Zone > DNS > Write` on `trakrf.app` only.
 - Token delivered to the cluster as a k8s Secret. **M1 posture:** manual `kubectl create secret generic cloudflare-api-token --from-literal=api-token=…` — consistent with current CNPG secret posture. **Eventual posture:** External Secrets Operator (TRA-362).
 - Cert issued: `Certificate` for `*.trakrf.app` + apex `trakrf.app`, stored in ns `trakrf` or `cert-manager-certs` (decide in plan).
 
@@ -99,7 +99,7 @@ cert-manager runs out-of-band: on cert request/renewal, creates a TXT record und
 Ordering reflects dependency chain; first 4 can proceed mostly in parallel until step 5.
 
 1. **Promote `trakrf.app` zone** — `terraform/cloudflare/`: remove from alt-domains locals, add `trakrf-app.tf` with zone + settings + (empty) records block. Plan-only first, apply once the full chain is ready to avoid a zone with no records.
-2. **Cloudflare API token for cert-manager** — `terraform/cloudflare/`: new `cloudflare_api_token.cert_manager`, scoped `Zone > DNS > Write` on `trakrf.app` only. Sensitive output.
+2. **Cloudflare API token for cert-manager** — `terraform/bootstrap/`: new `cloudflare_api_token.cert_manager`, scoped `Zone > DNS > Write` on `trakrf.app` only. Sensitive output `cert_manager_cf_token`.
 3. **cert-manager via ArgoCD** — Helm chart + Application manifest in `argocd/`, `ClusterIssuer` with Cloudflare DNS-01 solver, manual Secret delivery for token (consistent with current CNPG pattern).
 4. **Traefik via ArgoCD** — Helm chart + Application manifest in `argocd/`, NLB service, middleware baseline, wildcard cert `Certificate` resource.
 5. **`eks.trakrf.app` cutover** — DNS CNAME to NLB hostname, IngressRoute for trakrf-backend, verify end-to-end per acceptance criteria.

@@ -15,3 +15,9 @@ output "infrastructure_token" {
   value     = cloudflare_api_token.terraform_infrastructure.value
   sensitive = true
 }
+
+output "cert_manager_cf_token" {
+  value       = cloudflare_api_token.cert_manager.value
+  sensitive   = true
+  description = "API token for cert-manager DNS-01 ACME challenge on trakrf.app"
+}
