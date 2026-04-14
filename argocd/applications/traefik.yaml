@@ -77,6 +77,8 @@ spec:
             allowCrossNamespace: true
           kubernetesIngress:
             enabled: false
+        ingressClass:
+          enabled: false
         ingressRoute:
           dashboard:
             enabled: false
