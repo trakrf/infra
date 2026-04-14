@@ -1,0 +1,12 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: default-chain
+  namespace: traefik
+spec:
+  chain:
+    middlewares:
+      - name: security-headers
+        namespace: traefik
+      - name: redirect-https
+        namespace: traefik
