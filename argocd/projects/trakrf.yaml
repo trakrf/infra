@@ -10,6 +10,7 @@ spec:
     - "https://argoproj.github.io/argo-helm"
     - "https://prometheus-community.github.io/helm-charts"
     - "https://cloudnative-pg.github.io/charts"
+    - "https://traefik.github.io/charts"
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
@@ -23,6 +24,8 @@ spec:
       namespace: cnpg-system
     - server: https://kubernetes.default.svc
       namespace: trakrf-db
+    - server: https://kubernetes.default.svc
+      namespace: traefik
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
