@@ -16,6 +16,15 @@ service:
   type: ClusterIP
   port: 8080
 
+# Public ingress (Traefik IngressRoute CRD). TRA-381.
+ingress:
+  enabled: true
+  host: eks.trakrf.app
+  # Default chain (security-headers + redirect-https) lives in helm/traefik-config.
+  middlewares:
+    - name: default-chain
+      namespace: traefik
+
 resources:
   requests:
     cpu: 100m
