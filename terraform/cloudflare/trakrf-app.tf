@@ -37,3 +37,23 @@ resource "cloudflare_record" "eks_trakrf_app" {
   proxied = true
   comment = "TRA-381 — EKS demo: Cloudflare → NLB → Traefik → trakrf-backend"
 }
+
+# WAF — Cloudflare Free Managed Ruleset (TRA-381).
+# Block mode from day one (low FP rate, minimal traffic, greenfield demo).
+resource "cloudflare_ruleset" "trakrf_app_managed_waf" {
+  zone_id     = cloudflare_zone.trakrf_app.id
+  name        = "Managed WAF entrypoint"
+  description = "Executes Cloudflare Free Managed Ruleset on all zone traffic"
+  kind        = "zone"
+  phase       = "http_request_firewall_managed"
+
+  rules {
+    action      = "execute"
+    description = "Free Managed Ruleset"
+    expression  = "true"
+    enabled     = true
+    action_parameters {
+      id = "efb7b8c949ac4650a09736fc376e9aee"
+    }
+  }
+}
