@@ -19,3 +19,8 @@ variable "railway_app_prod_endpoint" {
   description = "Railway endpoint for app subdomain (production)"
   default     = "hlvn5pcb.up.railway.app"
 }
+
+variable "eks_nlb_hostname" {
+  type        = string
+  description = "AWS NLB hostname fronting the EKS Traefik Service (eks.trakrf.app CNAME target)"
+}

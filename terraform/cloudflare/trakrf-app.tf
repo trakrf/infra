@@ -25,3 +25,15 @@ resource "cloudflare_zone_settings_override" "trakrf_app" {
     }
   }
 }
+
+# eks.trakrf.app — EKS demo environment (TRA-381).
+# CNAME to the Traefik NLB hostname, orange-cloud proxied for WAF + cache.
+resource "cloudflare_record" "eks_trakrf_app" {
+  zone_id = cloudflare_zone.trakrf_app.id
+  name    = "eks"
+  type    = "CNAME"
+  content = var.eks_nlb_hostname
+  ttl     = 1 # automatic when proxied
+  proxied = true
+  comment = "TRA-381 — EKS demo: Cloudflare → NLB → Traefik → trakrf-backend"
+}
