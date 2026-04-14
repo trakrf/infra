@@ -44,6 +44,8 @@ spec:
       kind: ValidatingWebhookConfiguration
     - group: "apiextensions.k8s.io"
       kind: "*"
+    - group: "cert-manager.io"
+      kind: ClusterIssuer
   namespaceResourceBlacklist:
     - group: ""
       kind: ResourceQuota
