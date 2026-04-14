@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chart: [trakrf-backend, trakrf-ingester]
+        chart: [trakrf-backend, trakrf-ingester, traefik-config]
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
