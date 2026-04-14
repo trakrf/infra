@@ -4,7 +4,6 @@
 locals {
   alt_domains = {
     getrf_id     = "getrf.id"
-    trakrf_app   = "trakrf.app"
     trakrf_com   = "trakrf.com"
     trakrfid_com = "trakrfid.com"
   }
