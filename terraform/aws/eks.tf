@@ -36,6 +36,37 @@ module "eks" {
 
       disk_size = 50
     }
+
+    # Dedicated on-demand node for CNPG database. Pinned to a single AZ so that
+    # ASG replacements always land in the same AZ as the EBS PV (WaitForFirstConsumer
+    # pins the PV on first schedule). Spot reclaim across AZs was orphaning the PV
+    # and leaving the DB pod Pending indefinitely — see TRA-364.
+    database = {
+      instance_types = ["t3.medium"]
+      capacity_type  = "ON_DEMAND"
+
+      # Single subnet => single AZ => stable PV affinity under node replacement.
+      # us-east-2b (private_subnets[1]) — matches existing trakrf-db-1 PV.
+      subnet_ids = [module.vpc.private_subnets[1]]
+
+      min_size     = 1
+      max_size     = 1
+      desired_size = 1
+
+      disk_size = 30
+
+      labels = {
+        workload = "database"
+      }
+
+      taints = {
+        database = {
+          key    = "workload"
+          value  = "database"
+          effect = "NO_SCHEDULE"
+        }
+      }
+    }
   }
 
   # Allow current IAM user to manage cluster

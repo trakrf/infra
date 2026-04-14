@@ -53,3 +53,16 @@ spec:
   storage:
     size: 10Gi
     storageClass: gp3
+
+  # Pin to the dedicated on-demand, single-AZ database node group (TRA-364).
+  # The PV lands in whatever AZ the pod first schedules into, so co-locating
+  # the DB pod with a single-AZ ASG keeps PV/node affinity stable across
+  # node replacement (spot reclaim no longer orphans the PV across AZs).
+  affinity:
+    nodeSelector:
+      workload: database
+    tolerations:
+      - key: workload
+        operator: Equal
+        value: database
+        effect: NoSchedule
