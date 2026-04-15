@@ -43,10 +43,13 @@ spec:
             service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
         # Cloudflare published ranges — refresh from https://www.cloudflare.com/ips-v4
         # and /ips-v6 when CF updates (rare, ~quarterly).
+        # VPC CIDR is also trusted so XFF set by CF survives the NLB hop (the
+        # TCP peer Traefik sees is the NLB ENI, not the CF edge).
         ports:
           web:
             forwardedHeaders: &cfTrustedIPs
               trustedIPs:
+                - 10.142.0.0/16
                 - 173.245.48.0/20
                 - 103.21.244.0/22
                 - 103.22.200.0/22
@@ -85,6 +88,10 @@ spec:
         logs:
           access:
             enabled: true
+            format: json
+            fields:
+              headers:
+                defaultMode: keep
         metrics:
           prometheus:
             enabled: true
