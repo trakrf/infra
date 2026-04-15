@@ -49,6 +49,18 @@ resource "cloudflare_api_token" "terraform_infrastructure" {
       ],
       data.cloudflare_api_token_permission_groups.all.zone["Zone Settings Read"],
       data.cloudflare_api_token_permission_groups.all.zone["Zone Settings Write"],
+      # WAF managed rulesets (TRA-381 Free Managed Ruleset)
+      data.cloudflare_api_token_permission_groups.all.zone["Zone WAF Read"],
+      data.cloudflare_api_token_permission_groups.all.zone["Zone WAF Write"],
+      # Cache rulesets (TRA-381 /api bypass + /assets edge TTL)
+      data.cloudflare_api_token_permission_groups.all.zone["Cache Settings Read"],
+      data.cloudflare_api_token_permission_groups.all.zone["Cache Settings Write"],
+      # Dynamic redirect rulesets (alt-domains.tf alt_redirect)
+      data.cloudflare_api_token_permission_groups.all.zone["Dynamic URL Redirects Read"],
+      data.cloudflare_api_token_permission_groups.all.zone["Dynamic URL Redirects Write"],
+      # Cloudflare Pages projects (pages.tf — www, docs)
+      data.cloudflare_api_token_permission_groups.all.account["Pages Read"],
+      data.cloudflare_api_token_permission_groups.all.account["Pages Write"],
     ]
     resources = {
       "com.cloudflare.api.account.${var.account_id}" = "*"

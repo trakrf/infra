@@ -1,0 +1,22 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "trakrf-backend.fullname" . }}
+  labels:
+    {{- include "trakrf-backend.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      {{- with .Values.ingress.middlewares }}
+      middlewares:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      services:
+        - name: {{ include "trakrf-backend.fullname" . }}
+          port: {{ .Values.service.port }}
+  tls: {}
+{{- end }}

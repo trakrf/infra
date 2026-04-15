@@ -1,6 +1,7 @@
 export TF_VAR_account_id := env_var("CLOUDFLARE_ACCOUNT_ID")
 export TF_VAR_bucket_name := env_var("CLOUDFLARE_TF_STATE_BUCKET")
 export TF_VAR_domain_name := env_var("DOMAIN_NAME")
+export TF_VAR_eks_nlb_hostname := env_var("EKS_NLB_HOSTNAME")
 
 r2_endpoint := "https://" + env_var("CLOUDFLARE_ACCOUNT_ID") + ".r2.cloudflarestorage.com"
 
