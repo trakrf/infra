@@ -20,8 +20,15 @@ resource "cloudflare_zone_settings_override" "trakrf_app" {
     automatic_https_rewrites = "on"
     opportunistic_encryption = "on"
     tls_1_3                  = "on"
+    # HSTS — 2y, include subdomains, preload. CF overrides any origin HSTS,
+    # so configure it here (Traefik's middleware would otherwise be silently
+    # replaced with max-age=0 default). .app TLD is on the HSTS preload list.
     security_header {
-      enabled = true
+      enabled            = true
+      max_age            = 63072000
+      include_subdomains = true
+      preload            = true
+      nosniff            = true
     }
   }
 }
