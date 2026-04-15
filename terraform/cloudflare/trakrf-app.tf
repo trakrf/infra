@@ -53,7 +53,7 @@ resource "cloudflare_ruleset" "trakrf_app_managed_waf" {
     expression  = "true"
     enabled     = true
     action_parameters {
-      id = "efb7b8c949ac4650a09736fc376e9aee"
+      id = "77454fe2d30c4220b5701f6fdfb893ba"
     }
   }
 }
