@@ -59,6 +59,17 @@ database:
   port: 5432
   name: trakrf
   sslmode: require
+  # Session search_path baked into PG_URL via libpq `options=-c search_path=...`.
+  # Required because the trakrf-app role has no per-role default and trigger
+  # functions resolve unqualified `nextval(seq_name::text)` through the session
+  # search_path.
+  #
+  # Order is `public,trakrf` (NOT `trakrf,public`) so `current_schema()=public`,
+  # which lets golang-migrate's startup runner short-circuit on the existing
+  # `public.schema_migrations` (trakrf-app has no CREATE on `trakrf`). Triggers
+  # still find `trakrf.user_seq` etc. via the search_path fallback.
+  # Schema name itself is still hardcoded across migrations + Go — TRA-278.
+  searchPath: "public,trakrf"
 
 # Non-secret config (ConfigMap)
 config:
@@ -97,3 +108,7 @@ migrate:
   port: 5432
   database: trakrf
   sslmode: require
+  # Match the backend ordering so the existing `public.schema_migrations` is
+  # reused; `trakrf,public` would create a second table in the trakrf schema
+  # and try to re-apply every migration from version 0.
+  searchPath: "public,trakrf"

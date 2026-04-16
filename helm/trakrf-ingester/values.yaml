@@ -43,6 +43,11 @@ database:
   port: 5432
   name: trakrf
   sslmode: require
+  # See trakrf-backend values for the full rationale; needed so trigger
+  # functions resolve sequences in the trakrf schema. Matches the backend
+  # ordering (`public,trakrf`) for consistency. TRA-278 will make the
+  # schema name itself configurable.
+  searchPath: "public,trakrf"
 
 # MQTT config
 mqtt:
