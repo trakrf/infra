@@ -47,14 +47,18 @@ resource "cloudflare_record" "eks_trakrf_app" {
 
 # grafana.eks.trakrf.app — public Grafana ingress (TRA-386).
 # Same NLB target as eks.trakrf.app; Traefik routes by Host header.
+# Grey-cloud (proxied=false): CF Universal SSL on the Free plan doesn't
+# cover two-label-deep hosts (*.eks.trakrf.app), so we bypass the edge and
+# let Traefik's letsencrypt cert terminate TLS directly. Revisit if we
+# adopt Advanced Certificate Manager for WAF/CDN parity on *.eks.
 resource "cloudflare_record" "grafana_eks_trakrf_app" {
   zone_id = cloudflare_zone.trakrf_app.id
   name    = "grafana.eks"
   type    = "CNAME"
   content = var.eks_nlb_hostname
-  ttl     = 1 # automatic when proxied
-  proxied = true
-  comment = "TRA-386 — Grafana public ingress: Cloudflare → NLB → Traefik → Grafana"
+  ttl     = 300
+  proxied = false
+  comment = "TRA-386 — Grafana public ingress (DNS-only; TLS at Traefik)"
 }
 
 # WAF — Cloudflare Free Managed Ruleset (TRA-381).
