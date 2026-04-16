@@ -22,8 +22,9 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: {{ .Values.migrate.image | default .Values.migrate.defaultImage | quote }}
-          imagePullPolicy: IfNotPresent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["./server", "migrate"]
           env:
             - name: PGUSER
               value: {{ .Values.migrate.user | quote }}
@@ -34,22 +35,4 @@ spec:
                   key: password
             - name: PG_URL
               value: "postgresql://$(PGUSER):$(PGPASSWORD)@{{ .Values.migrate.host }}:{{ .Values.migrate.port }}/{{ .Values.migrate.database }}?sslmode={{ .Values.migrate.sslmode }}&options=-c%20search_path%3D{{ .Values.migrate.searchPath }}"
-          {{- if .Values.migrate.image }}
-          # Backend image path: migrations baked into image at /app/db/migrations (TRA-363).
-          command: ["migrate"]
-          args: ["-path", "/app/db/migrations", "-database", "$(PG_URL)", "up"]
-          {{- else }}
-          # Fallback path: migrate/migrate image + ConfigMap mount.
-          command: ["migrate"]
-          args: ["-path", "/migrations", "-database", "$(PG_URL)", "up"]
-          volumeMounts:
-            - name: migrations
-              mountPath: /migrations
-          {{- end }}
-      {{- if not .Values.migrate.image }}
-      volumes:
-        - name: migrations
-          configMap:
-            name: {{ include "trakrf-backend.fullname" . }}-migrations
-      {{- end }}
 {{- end }}

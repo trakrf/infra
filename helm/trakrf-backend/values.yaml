@@ -7,7 +7,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/trakrf/backend
-  tag: sha-628bb5c
+  tag: sha-9f22fac
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -101,15 +101,10 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
-# Schema migration Job (TRA-361).
-# When `image` is unset, a ConfigMap is rendered from helm/trakrf-backend/migrations/
-# and mounted into a generic migrate/migrate image.
-# When `image` is set (e.g., once TRA-363 publishes the backend image with migrations baked
-# in at /app/db/migrations), the ConfigMap is skipped and that image is used directly.
+# Schema migration Job — runs `./server migrate` from the backend image (TRA-367).
+# Uses the same image as the deployment, so a tag bump migrates + serves consistently.
 migrate:
   enabled: true
-  image: ""                            # e.g., ghcr.io/trakrf/backend:sha-abc123
-  defaultImage: migrate/migrate:v4.17.0
   credentialsSecret: trakrf-migrate-credentials
   # Connection target — separate from `database:` because `database:` is the app role (trakrf-app),
   # while migrations run as trakrf-migrate.
