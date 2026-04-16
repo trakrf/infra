@@ -21,9 +21,12 @@ ConfigMap).
 
 ## Access
 
+Grafana is exposed publicly at <https://grafana.eks.trakrf.app> (TRA-386).
+Prometheus and Alertmanager remain cluster-internal; use port-forward.
+
 ```sh
-just grafana-password   # admin password
-just grafana-ui         # port-forward to :3000
+just grafana-password   # admin password (still the source of truth)
+just grafana-ui         # port-forward to :3000 (local/debug)
 just prometheus-ui      # port-forward to :9090
 ```
 
