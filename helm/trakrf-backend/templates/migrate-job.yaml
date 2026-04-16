@@ -33,7 +33,7 @@ spec:
                   name: {{ .Values.migrate.credentialsSecret }}
                   key: password
             - name: PG_URL
-              value: "postgresql://$(PGUSER):$(PGPASSWORD)@{{ .Values.migrate.host }}:{{ .Values.migrate.port }}/{{ .Values.migrate.database }}?sslmode={{ .Values.migrate.sslmode }}"
+              value: "postgresql://$(PGUSER):$(PGPASSWORD)@{{ .Values.migrate.host }}:{{ .Values.migrate.port }}/{{ .Values.migrate.database }}?sslmode={{ .Values.migrate.sslmode }}&options=-c%20search_path%3D{{ .Values.migrate.searchPath }}"
           {{- if .Values.migrate.image }}
           # Backend image path: migrations baked into image at /app/db/migrations (TRA-363).
           command: ["migrate"]

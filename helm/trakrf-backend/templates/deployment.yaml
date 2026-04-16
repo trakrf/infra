@@ -43,7 +43,7 @@ spec:
                   name: {{ .Values.database.credentialsSecret }}
                   key: password
             - name: PG_URL
-              value: "postgresql://{{ .Values.database.user }}:$(PG_PASSWORD)@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode={{ .Values.database.sslmode }}"
+              value: "postgresql://{{ .Values.database.user }}:$(PG_PASSWORD)@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode={{ .Values.database.sslmode }}&options=-c%20search_path%3D{{ .Values.database.searchPath }}"
           envFrom:
             - configMapRef:
                 name: {{ include "trakrf-backend.fullname" . }}
