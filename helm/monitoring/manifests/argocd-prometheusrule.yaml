@@ -1,0 +1,25 @@
+# helm/monitoring/manifests/argocd-prometheusrule.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-controller
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: argocd
+spec:
+  groups:
+    - name: argocd-controller
+      rules:
+        # Controller OOMs silently mask sync failures: child Applications keep
+        # reporting last-good cached status while no new commits propagate.
+        # Threshold is lower than a typical restart alert because any OOM here
+        # means we're out of memory headroom and drift may go undetected.
+        - alert: ArgoCDControllerCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace="argocd", pod=~"argocd-application-controller.*"}[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "argocd-application-controller restarting repeatedly"
+            description: "Controller in {{ $labels.pod }} has restarted {{ $value }} times in 15m — ArgoCD syncs are likely silently failing."
