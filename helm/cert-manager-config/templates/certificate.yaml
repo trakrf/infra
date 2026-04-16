@@ -12,6 +12,7 @@ spec:
   dnsNames:
     - trakrf.app
     - "*.trakrf.app"
+    - "*.eks.trakrf.app"
   privateKey:
     algorithm: ECDSA
     size: 256
