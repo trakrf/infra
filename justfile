@@ -31,7 +31,7 @@ bootstrap:
 cloudflare: (_backend-conf "terraform/cloudflare")
     @echo "Planning Cloudflare resources on ${DOMAIN_NAME}"
     @tofu -chdir=terraform/cloudflare init -backend-config=backend.conf
-    @tofu -chdir=terraform/cloudflare plan -out=tfplan
+    @tofu -chdir=terraform/cloudflare plan -out=tfplan -var eks_nlb_hostname="${EKS_NLB_HOSTNAME}"
     @tofu -chdir=terraform/cloudflare apply tfplan
 
 # Plan and apply AWS infrastructure (Route53, EKS)
