@@ -28,10 +28,13 @@ spec:
           resources:
             requests:
               cpu: 250m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: "1"
-              memory: 512Mi
+              # 512Mi was OOMKilled in CrashLoopBackOff for ~3 days, silently
+              # masking sync failures. 2Gi gives headroom for current app
+              # count + diff cache.
+              memory: 2Gi
         repoServer:
           resources:
             requests:
