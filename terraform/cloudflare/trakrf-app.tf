@@ -45,6 +45,18 @@ resource "cloudflare_record" "eks_trakrf_app" {
   comment = "TRA-381 — EKS demo: Cloudflare → NLB → Traefik → trakrf-backend"
 }
 
+# grafana.eks.trakrf.app — public Grafana ingress (TRA-386).
+# Same NLB target as eks.trakrf.app; Traefik routes by Host header.
+resource "cloudflare_record" "grafana_eks_trakrf_app" {
+  zone_id = cloudflare_zone.trakrf_app.id
+  name    = "grafana.eks"
+  type    = "CNAME"
+  content = var.eks_nlb_hostname
+  ttl     = 1 # automatic when proxied
+  proxied = true
+  comment = "TRA-386 — Grafana public ingress: Cloudflare → NLB → Traefik → Grafana"
+}
+
 # WAF — Cloudflare Free Managed Ruleset (TRA-381).
 # Block mode from day one (low FP rate, minimal traffic, greenfield demo).
 resource "cloudflare_ruleset" "trakrf_app_managed_waf" {
