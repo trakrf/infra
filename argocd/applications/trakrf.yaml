@@ -19,3 +19,15 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+  ignoreDifferences:
+    # CNPG admission webhook injects these defaults into every entry of
+    # spec.managed.roles[]. ArgoCD's argocd-controller field-manager owns
+    # the whole array, so the webhook-injected defaults aren't in its
+    # Apply and ArgoCD reports permanent drift. Pinning the defaults in
+    # cluster.yaml would couple us to operator-version defaults; ignoring
+    # them here is durable across CNPG upgrades.
+    - group: postgresql.cnpg.io
+      kind: Cluster
+      jqPathExpressions:
+        - '.spec.managed.roles[].connectionLimit'
+        - '.spec.managed.roles[].inherit'
