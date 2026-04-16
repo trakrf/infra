@@ -1,0 +1,96 @@
+{
+  "title": "TrakRF Backend — Go runtime",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Target up",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "up{job=\"trakrf-backend\"}" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Goroutines",
+      "gridPos": { "h": 5, "w": 5, "x": 4, "y": 0 },
+      "targets": [
+        { "expr": "go_goroutines{job=\"trakrf-backend\"}" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Heap in use",
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 0 },
+      "targets": [
+        { "expr": "go_memstats_heap_inuse_bytes{job=\"trakrf-backend\"}", "format": "bytes" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Resident memory",
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 0 },
+      "targets": [
+        { "expr": "process_resident_memory_bytes{job=\"trakrf-backend\"}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "CPU (cores, 5m)",
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
+      "targets": [
+        { "expr": "rate(process_cpu_seconds_total{job=\"trakrf-backend\"}[5m])" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Goroutines",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        { "expr": "go_goroutines{job=\"trakrf-backend\"}", "legendFormat": "{{pod}}" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Memory — heap alloc / heap inuse / RSS",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "bytes" } },
+      "targets": [
+        { "expr": "go_memstats_heap_alloc_bytes{job=\"trakrf-backend\"}", "legendFormat": "heap_alloc {{pod}}" },
+        { "expr": "go_memstats_heap_inuse_bytes{job=\"trakrf-backend\"}", "legendFormat": "heap_inuse {{pod}}" },
+        { "expr": "process_resident_memory_bytes{job=\"trakrf-backend\"}", "legendFormat": "rss {{pod}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "GC pause (quantiles)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "go_gc_duration_seconds{job=\"trakrf-backend\"}", "legendFormat": "p{{quantile}} {{pod}}" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "CPU usage (cores)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "expr": "rate(process_cpu_seconds_total{job=\"trakrf-backend\"}[5m])", "legendFormat": "{{pod}}" }
+      ]
+    }
+  ]
+}

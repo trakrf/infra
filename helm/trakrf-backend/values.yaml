@@ -16,6 +16,16 @@ service:
   type: ClusterIP
   port: 8080
 
+# Prometheus /metrics is exposed on the same chi router as the API (port 8080),
+# so no separate metrics port — the ServiceMonitor scrapes the `http` port.
+metrics:
+  enabled: true
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
 # Public ingress (Traefik IngressRoute CRD). TRA-381.
 ingress:
   enabled: true
