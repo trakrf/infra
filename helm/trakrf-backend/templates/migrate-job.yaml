@@ -24,7 +24,7 @@ spec:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["./server", "migrate"]
+          command: ["/server", "migrate"]
           env:
             - name: PGUSER
               value: {{ .Values.migrate.user | quote }}
