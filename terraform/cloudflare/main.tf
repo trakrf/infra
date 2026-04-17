@@ -58,6 +58,15 @@ resource "cloudflare_record" "docs" {
   proxied = true
 }
 
+# Docs preview subdomain — stable alias for the `preview` branch deployment
+resource "cloudflare_record" "docs_preview" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "docs.preview"
+  content = "preview.${cloudflare_pages_project.docs.subdomain}"
+  type    = "CNAME"
+  proxied = true
+}
+
 # DMARC record for email deliverability
 resource "cloudflare_record" "dmarc" {
   zone_id = cloudflare_zone.domain.id

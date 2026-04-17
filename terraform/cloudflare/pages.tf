@@ -95,6 +95,13 @@ resource "cloudflare_pages_domain" "docs_custom" {
   domain       = "docs.${var.domain_name}"
 }
 
+# Custom domain for docs preview subdomain (stable alias for `preview` branch)
+resource "cloudflare_pages_domain" "docs_preview_custom" {
+  account_id   = var.account_id
+  project_name = cloudflare_pages_project.docs.name
+  domain       = "docs.preview.${var.domain_name}"
+}
+
 # Output the docs Pages URL
 output "docs_pages_url" {
   value       = cloudflare_pages_project.docs.subdomain
