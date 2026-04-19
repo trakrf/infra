@@ -67,14 +67,9 @@ resource "cloudflare_record" "docs_preview" {
   proxied = true
 }
 
-# DMARC record for email deliverability
-resource "cloudflare_record" "dmarc" {
-  zone_id = cloudflare_zone.domain.id
-  name    = "_dmarc"
-  content = "v=DMARC1; p=none; rua=mailto:admin@trakrf.id"
-  type    = "TXT"
-}
-
+# DMARC record is managed by Cloudflare DMARC Management (Email Security UI),
+# which auto-publishes _dmarc with a zone-specific rua mailto so the dashboard
+# can ingest aggregate reports. Enable per zone in the Cloudflare dashboard.
 
 
 # Zone Settings
