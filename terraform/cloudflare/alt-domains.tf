@@ -102,13 +102,6 @@ resource "cloudflare_zone_settings_override" "alt_settings" {
   }
 }
 
-# --- DMARC Records ---
-
-resource "cloudflare_record" "alt_dmarc" {
-  for_each = local.alt_domains
-  zone_id  = cloudflare_zone.alt[each.key].id
-  name     = "_dmarc"
-  content  = "v=DMARC1; p=none; rua=mailto:admin@trakrf.id"
-  type     = "TXT"
-}
+# DMARC records for alt zones are managed by Cloudflare DMARC Management
+# (Email Security UI), not Terraform. Enable per zone in the Cloudflare dashboard.
 
