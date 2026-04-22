@@ -29,6 +29,15 @@ bootstrap:
       - GRANT USAGE ON SCHEMA trakrf TO "trakrf-app"
       - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app"
       - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT USAGE, SELECT ON SEQUENCES TO "trakrf-app"
+      # RLS policies on trakrf.* tables read current_setting('app.current_org_id')
+      # without missing_ok=true, so any query against those tables from a session
+      # that never did SET LOCAL app.current_org_id = ... errors with SQLSTATE 42704
+      # (unrecognized configuration parameter). The backend's WithOrgTx wrapper
+      # sets this per-request, but a few call sites (e.g. BatchLookupTags) query
+      # the pool directly. Set a sentinel default of '0' (no real org has that id,
+      # so RLS still returns 0 rows — no cross-org leakage) so those call sites
+      # fail soft (empty result) rather than 500.
+      - ALTER ROLE "trakrf-app" SET app.current_org_id = '0'
 
 managedRoles:
   - name: trakrf-app
