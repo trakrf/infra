@@ -50,6 +50,10 @@ spec:
   destination:
     server: {{ .destination.server }}
     namespace: {{ .namespace }}
+  {{- if .ignoreDifferences }}
+  ignoreDifferences:
+{{ .ignoreDifferences | indent 4 }}
+  {{- end }}
   syncPolicy:
     automated:
       prune: true

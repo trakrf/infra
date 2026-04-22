@@ -1,3 +1,7 @@
+{{- /* CNPG operator fills runtime defaults on the Cluster spec
+       (connectionLimit, inRoles, etc.). Ignore fields owned by the
+       operator's field manager to silence cosmetic OutOfSync. */ -}}
+{{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - cloudnative-pg\n" -}}
 {{- include "trakrf.application" (dict
   "name" "trakrf-db"
   "path" "helm/trakrf-db"
@@ -8,4 +12,5 @@
   "targetRevision" .Values.targetRevision
   "destination" .Values.destination
   "inlineValues" ""
+  "ignoreDifferences" $ignore
 ) }}

@@ -34,6 +34,19 @@ spec:
   destination:
     server: {{ .Values.destination.server }}
     namespace: {{ .Values.namespaces.certManager }}
+  # cainjector populates the caBundle field at runtime on the webhook
+  # configurations — that's expected operator behavior, not drift.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: cert-manager-webhook
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: cert-manager-webhook
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
   syncPolicy:
     automated:
       prune: true
