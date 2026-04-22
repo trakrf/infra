@@ -1,6 +1,10 @@
 # Current az CLI principal — used as group owner + first member
 data "azuread_client_config" "current" {}
 
+# azurerm client config — exposes the subscription the TF session is authed against.
+# Consumed by outputs.tf for the cert-manager Azure DNS solver config.
+data "azurerm_client_config" "current" {}
+
 # Entra group that grants AKS cluster-admin via AAD-RBAC
 resource "azuread_group" "aks_admins" {
   display_name     = "trakrf-aks-admins"

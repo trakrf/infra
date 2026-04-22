@@ -45,3 +45,30 @@ output "dns_nameservers" {
   description = "Azure DNS nameservers — consumed by Cloudflare for NS delegation"
   value       = azurerm_dns_zone.aks_trakrf_app.name_servers
 }
+
+# TRA-438 — wiring for helm values (cert-manager, Traefik)
+
+output "cert_manager_identity_client_id" {
+  description = "Client ID of the cert-manager user-assigned identity (SA annotation + solver config)"
+  value       = azurerm_user_assigned_identity.cert_manager.client_id
+}
+
+output "tenant_id" {
+  description = "Entra tenant ID (Azure DNS solver config)"
+  value       = data.azuread_client_config.current.tenant_id
+}
+
+output "subscription_id" {
+  description = "Subscription the DNS zone + LB resources live in (Azure DNS solver config, LB annotation)"
+  value       = data.azurerm_client_config.current.subscription_id
+}
+
+output "traefik_lb_ip" {
+  description = "Static IP for Traefik LoadBalancer Service — passed as helm loadBalancerIP"
+  value       = azurerm_public_ip.traefik.ip_address
+}
+
+# Note: `resource_group_name` (above) is used for BOTH dns_zone_resource_group
+# (cert-manager Azure DNS solver) and main_resource_group_name (Traefik Service
+# azure-load-balancer-resource-group annotation). Same value today; if prod ever
+# splits them, add separate outputs at that point.
