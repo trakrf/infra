@@ -1,0 +1,12 @@
+# EKS-specific ArgoCD install values. IRSA role ARN for the argocd-server
+# ServiceAccount — preserved from pre-TRA-438 common values.yaml so an EKS
+# rebuild picks it up unchanged.
+#
+# This same annotation also gets applied to the live argocd deployment via
+# the argocd self-hosting Application (argocd/root/templates/argocd.yaml),
+# which templates it inline per-cluster.
+
+server:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: "arn:aws:iam::252374924199:role/trakrf-demo-argocd"
