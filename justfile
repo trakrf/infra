@@ -41,6 +41,13 @@ aws: (_backend-conf "terraform/aws")
     @tofu -chdir=terraform/aws plan -out=tfplan
     @tofu -chdir=terraform/aws apply tfplan
 
+# Plan and apply Azure infrastructure (AKS, ACR, Azure DNS)
+azure: (_backend-conf "terraform/azure")
+    @echo "Planning Azure infrastructure..."
+    @tofu -chdir=terraform/azure init -backend-config=backend.conf
+    @tofu -chdir=terraform/azure plan -out=tfplan
+    @tofu -chdir=terraform/azure apply tfplan
+
 # List objects in the R2 terraform state bucket
 s3-ls:
     @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
