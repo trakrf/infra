@@ -1,10 +1,12 @@
 # AKS overrides for trakrf-backend.
-# Pinned to the first multi-arch tag published post-TRA-451 (sha-dfb5841
-# is the trakrf/platform merge commit of PR #187 that added linux/arm64
-# to the docker-build workflow matrix).
+# Pinned to the trakrf/platform main commit sha-a99b5b8 (PR #192 / TRA-455),
+# which wraps all RLS-protected storage queries in WithOrgTx so writes don't
+# RLS-reject against the trakrf-app role's app.current_org_id=0 default.
+# Image is linux/arm64-native (PR #190 switched CI to an ARM-native runner
+# and dropped amd64 from main-branch builds) — AKS runs on Cobalt 100 ARM.
 
 image:
-  tag: sha-dfb5841
+  tag: sha-a99b5b8
 
 ingress:
   host: aks.trakrf.app
