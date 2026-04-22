@@ -1,0 +1,64 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.fullnameOverride | default "trakrf-db" }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  instances: {{ .Values.cluster.instances }}
+  imageName: {{ .Values.cluster.imageName | quote }}
+
+  postgresql:
+    shared_preload_libraries:
+      {{- range .Values.postgresql.sharedPreloadLibraries }}
+      - {{ . }}
+      {{- end }}
+    parameters:
+      {{- range $k, $v := .Values.postgresql.parameters }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+
+  bootstrap:
+    initdb:
+      database: {{ .Values.bootstrap.initdb.database }}
+      owner: {{ .Values.bootstrap.initdb.owner | quote }}
+      postInitTemplateSQL:
+        {{- range .Values.bootstrap.initdb.postInitTemplateSQL }}
+        - {{ . | quote }}
+        {{- end }}
+      postInitSQL:
+        {{- range .Values.bootstrap.initdb.postInitSQL }}
+        - {{ . | quote }}
+        {{- end }}
+      postInitApplicationSQL:
+        {{- range .Values.bootstrap.initdb.postInitApplicationSQL }}
+        - {{ . | quote }}
+        {{- end }}
+
+  managed:
+    roles:
+      {{- range .Values.managedRoles }}
+      - name: {{ .name | quote }}
+        ensure: {{ .ensure }}
+        login: {{ .login }}
+        superuser: {{ .superuser }}
+        createdb: {{ .createdb | default false }}
+        createrole: {{ .createrole | default false }}
+        passwordSecret:
+          name: {{ .passwordSecretName }}
+      {{- end }}
+
+  storage:
+    size: {{ .Values.storage.size }}
+    storageClass: {{ required "storage.class must be set in values-<cluster>.yaml" .Values.storage.class | quote }}
+
+  {{- if or .Values.affinity.nodeSelector .Values.affinity.tolerations }}
+  affinity:
+    {{- with .Values.affinity.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.affinity.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  {{- end }}

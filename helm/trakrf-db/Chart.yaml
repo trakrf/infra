@@ -1,0 +1,5 @@
+apiVersion: v2
+name: trakrf-db
+description: TrakRF CNPG+Timescale database cluster
+type: application
+version: 0.1.0

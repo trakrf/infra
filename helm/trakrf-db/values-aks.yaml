@@ -1,0 +1,8 @@
+# AKS topology (per project_aks_demo_topology memory): single on-demand
+# primary node runs everything. No separate DB pool, no affinity — the
+# scheduler picks the only available node. Storage: managed-csi (AKS default).
+
+storage:
+  class: managed-csi
+
+# affinity intentionally empty — inherits defaults (nodeSelector {}, tolerations [])
