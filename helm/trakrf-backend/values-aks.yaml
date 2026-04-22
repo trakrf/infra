@@ -1,0 +1,9 @@
+# AKS overrides for trakrf-backend.
+# The placeholder image.tag below will fail `helm template` until TRA-451
+# ships a multi-arch tag to ghcr.io/trakrf/backend and Task 23 bumps it.
+
+image:
+  tag: "REPLACE_WITH_MULTI_ARCH_TAG"
+
+ingress:
+  host: aks.trakrf.app

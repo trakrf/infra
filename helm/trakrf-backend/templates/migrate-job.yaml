@@ -22,7 +22,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ required "image.tag must be set (usually in values-<cluster>.yaml)" .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/server", "migrate"]
           env:
