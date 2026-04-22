@@ -7,6 +7,16 @@
 global:
   domain: ""  # No ingress — access via port-forward
 
+# Server-side diff enables managedFieldsManagers in ignoreDifferences —
+# ArgoCD asks the Kubernetes API for a 3-way diff that respects field
+# ownership. Without this, only jsonPointers/jqPathExpressions work.
+# This is the modern recommended default in ArgoCD 2.10+.
+configs:
+  cm:
+    controller.diff.server.side: "true"
+  params:
+    controller.diff.server.side: "true"
+
 server:
   resources:
     requests:

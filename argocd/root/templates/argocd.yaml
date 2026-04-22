@@ -20,6 +20,14 @@ spec:
       values: |
         global:
           domain: ""
+        # Server-side diff enables managedFieldsManagers in ignoreDifferences
+        # (modern ArgoCD 2.10+ default). Mirrors argocd/bootstrap/values.yaml
+        # so the self-managed ArgoCD doesn't revert the controller flag.
+        configs:
+          cm:
+            controller.diff.server.side: "true"
+          params:
+            controller.diff.server.side: "true"
         server:
           {{- if eq .Values.cluster "eks" }}
           serviceAccount:
