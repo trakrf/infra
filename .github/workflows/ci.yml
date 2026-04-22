@@ -31,14 +31,53 @@ jobs:
         working-directory: terraform/${{ matrix.dir }}
 
   helm:
-    name: helm lint + template (${{ matrix.chart }})
+    name: helm lint + template (${{ matrix.chart }} / ${{ matrix.cluster }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        chart: [trakrf-backend, trakrf-ingester, traefik-config]
+        chart:
+          # helm/monitoring/ is a values-only wrapper (no Chart.yaml) for the
+          # upstream kube-prometheus-stack chart — applied via 'just
+          # monitoring-bootstrap CLUSTER', not lintable as a standalone chart.
+          # helm/cnpg/ is similar (values-only for upstream cnpg/cloudnative-pg).
+          - cert-manager-config
+          - traefik-config
+          - trakrf-backend
+          - trakrf-ingester
+          - trakrf-db
+        cluster: [eks, aks]
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: helm lint helm/${{ matrix.chart }}
-      - run: helm template helm/${{ matrix.chart }}
+      - name: Lint chart with cluster overlay
+        run: |
+          helm lint helm/${{ matrix.chart }} \
+            -f helm/${{ matrix.chart }}/values.yaml \
+            -f helm/${{ matrix.chart }}/values-${{ matrix.cluster }}.yaml
+      - name: Template chart with cluster overlay
+        run: |
+          helm template helm/${{ matrix.chart }} \
+            -f helm/${{ matrix.chart }}/values.yaml \
+            -f helm/${{ matrix.chart }}/values-${{ matrix.cluster }}.yaml
+
+  argocd-root:
+    name: helm template argocd/root (${{ matrix.cluster }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cluster: [eks, aks]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Template root app-of-apps
+        run: |
+          helm template trakrf-root argocd/root \
+            --set cluster=${{ matrix.cluster }} \
+            --set certManagerIdentityClientId=fake \
+            --set tenantId=fake \
+            --set subscriptionId=fake \
+            --set dnsZoneResourceGroup=fake \
+            --set traefikLbIp=1.2.3.4 \
+            --set mainResourceGroupName=fake

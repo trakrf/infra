@@ -13,11 +13,11 @@ resource "azurerm_user_assigned_identity" "cert_manager" {
 # Subject MUST exactly match the actual SA namespace/name — the cert-manager
 # Helm chart's default SA is `cert-manager` in the `cert-manager` namespace.
 resource "azurerm_federated_identity_credential" "cert_manager" {
-  name      = "fc-cert-manager-${local.name_prefix}"
-  audience  = ["api://AzureADTokenExchange"]
-  issuer    = azurerm_kubernetes_cluster.main.oidc_issuer_url
+  name                      = "fc-cert-manager-${local.name_prefix}"
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = azurerm_kubernetes_cluster.main.oidc_issuer_url
   user_assigned_identity_id = azurerm_user_assigned_identity.cert_manager.id
-  subject   = "system:serviceaccount:cert-manager:cert-manager"
+  subject                   = "system:serviceaccount:cert-manager:cert-manager"
 }
 
 # Tight scope: only the aks.trakrf.app DNS zone resource. Does NOT grant
