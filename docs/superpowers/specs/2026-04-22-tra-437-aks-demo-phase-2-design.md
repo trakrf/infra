@@ -29,7 +29,7 @@ Update the Linear issue to match once this spec is approved (or leave the diverg
 |---|---|---|
 | Node topology | Single on-demand primary pool, no separate DB pool, Spot burst deferred | EKS dual-pool left one node under-utilized on a single-env demo. One right-sized on-demand node is cheaper and predictably stable for DB workloads. |
 | Primary pool SKU | `Standard_D4ps_v5` (ARM, 4 vCPU / 16 GB) | Matches EKS `t3.xlarge` vCPU/RAM. ARM chosen despite multi-arch image risk (see below) for cost + parity with the burst pool we'll add in TRA-438. |
-| Primary pool zone | Zone `1` | Single-AZ pin required for CNPG PV stability (DB lives on this node). Most broadly supported SKU set in southcentralus. |
+| Primary pool zone | Zone `3` | Single-AZ pin required for CNPG PV stability (DB lives on this node). Zone 1 originally chosen, but this subscription has `NotAvailableForSubscription` restrictions on D-ps_v5 (ARM) SKUs in zones 1 and 2 — zone 3 is the only zone where ARM works. Verified 2026-04-22 via `az vm list-skus`. |
 | ACR name | `trakrf` (bare) | Globally unique check passed; no "demo" baked in so name survives a future prod migration. |
 | Kubernetes version | `1.35` (latest GA) | Greenfield build; full smoke test downstream regardless of version; no reason to lag. |
 | Admin auth model | AAD enabled + local accounts enabled | Entra-backed `kubectl` by default, `az aks get-credentials --admin` as escape hatch; flip `local_account_disabled = true` later without state-destroying changes. |
@@ -78,7 +78,7 @@ Update the Linear issue to match once this spec is approved (or leave the diverg
 
 **`terraform/azure/variables.tf`**
 - Add `variable "kubernetes_version"` (default `"1.35"`).
-- Add `variable "primary_pool_zone"` (default `"1"`).
+- Add `variable "primary_pool_zone"` (default `"3"`).
 - Add `variable "acr_name"` (default `"trakrf"`).
 
 **`terraform/azure/outputs.tf`** (append)

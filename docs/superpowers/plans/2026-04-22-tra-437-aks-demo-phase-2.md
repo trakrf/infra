@@ -56,7 +56,7 @@ az vm list-skus -l southcentralus --resource-type virtualMachines \
   -o jsonc
 ```
 
-Expected: one entry with `restrictions: []` (empty array). If `restrictions` contains `{"type": "Zone", ...}` blocking zone 1, raise the issue with the user before proceeding.
+Expected: one entry. Confirm zone 3 is NOT in any `restrictions[].restrictionInfo.zones` list. Note: in this subscription (confirmed 2026-04-22), zones 1 and 2 are blocked with `NotAvailableForSubscription` — zone 3 is the only ARM zone. If zone 3 also becomes blocked, escalate.
 
 - [ ] **Step 2: Verify AKS version 1.35 availability**
 
@@ -118,8 +118,8 @@ variable "kubernetes_version" {
 
 variable "primary_pool_zone" {
   type        = string
-  description = "Availability zone for the primary node pool (single-AZ pin for CNPG PV stability)"
-  default     = "1"
+  description = "Availability zone for the primary node pool (single-AZ pin for CNPG PV stability). Zone 3 required: this subscription blocks D-ps_v5 ARM SKUs in zones 1 and 2."
+  default     = "3"
 }
 
 variable "acr_name" {
