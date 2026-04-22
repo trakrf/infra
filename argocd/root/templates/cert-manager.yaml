@@ -34,21 +34,22 @@ spec:
   destination:
     server: {{ .Values.destination.server }}
     namespace: {{ .Values.namespaces.certManager }}
-  # cainjector populates the caBundle field at runtime on its own webhook
-  # configurations — that's expected operator behavior, not drift.
-  # Ignore fields owned by the cainjector field manager rather than trying to
-  # enumerate every jsonPointer.
+  # cainjector populates caBundle at runtime; k8s admissionsenforcer auto-
+  # injects namespaceSelector (exclude kube-system etc.). Both are expected
+  # operator/platform behavior, not drift.
   ignoreDifferences:
     - group: admissionregistration.k8s.io
       kind: ValidatingWebhookConfiguration
       name: cert-manager-webhook
       managedFieldsManagers:
         - cert-manager-cainjector
+        - admissionsenforcer
     - group: admissionregistration.k8s.io
       kind: MutatingWebhookConfiguration
       name: cert-manager-webhook
       managedFieldsManagers:
         - cert-manager-cainjector
+        - admissionsenforcer
   syncPolicy:
     automated:
       prune: true
