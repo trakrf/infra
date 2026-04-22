@@ -17,7 +17,7 @@ env:
 
 # Generate backend.conf for S3/R2 endpoint (gitignored, never committed)
 _backend-conf dir:
-    @printf 'endpoints = { s3 = "%s" }\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
+    @printf 'endpoints = { s3 = "%s" }\nprofile = "cloudflare-r2"\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
 
 # One-time setup: create R2 state bucket and API tokens
 bootstrap:

@@ -1,0 +1,98 @@
+name: terraform-azure
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'terraform/azure/**'
+      - '.github/workflows/terraform-azure.yml'
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type APPLY to confirm'
+        required: true
+
+concurrency:
+  group: terraform-azure-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  ARM_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID:    ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC:           "true"
+  TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AWS_ACCESS_KEY_ID:      ${{ secrets.R2_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY:  ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  R2_ENDPOINT:            https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/azure
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: opentofu/setup-opentofu@v1
+      - name: Write backend.conf
+        run: printf 'endpoints = { s3 = "%s" }\n' "$R2_ENDPOINT" > backend.conf
+      - name: Tofu init
+        run: tofu init -backend-config=backend.conf
+      - name: Tofu plan
+        shell: bash
+        run: |
+          set -o pipefail
+          tofu plan -refresh=false -no-color -out=tfplan 2>&1 | tee plan_output.txt
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          script: |
+            const fs = require('fs');
+            let body;
+            try {
+              const plan = fs.readFileSync('terraform/azure/plan_output.txt', 'utf8');
+              const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n...(truncated)' : plan;
+              body = `### Terraform Plan (terraform/azure)\n\n\`\`\`\n${truncated}\n\`\`\``;
+            } catch (err) {
+              body = `### Terraform Plan (terraform/azure)\n\nPlan output unavailable (likely a job failure before plan completed). See the workflow logs for details.\n\nError: \`${err.message}\``;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+  apply:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'APPLY' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/azure
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id:       ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: opentofu/setup-opentofu@v1
+      - name: Write backend.conf
+        run: printf 'endpoints = { s3 = "%s" }\n' "$R2_ENDPOINT" > backend.conf
+      - name: Tofu init
+        run: tofu init -backend-config=backend.conf
+      - name: Tofu apply
+        run: tofu apply -refresh=false -auto-approve

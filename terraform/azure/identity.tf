@@ -11,10 +11,18 @@ resource "azuread_group" "aks_admins" {
   description      = "Cluster admins for AKS (trakrf) — TRA-437"
   security_enabled = true
   owners           = [data.azuread_client_config.current.object_id]
+
+  lifecycle {
+    ignore_changes = [owners]
+  }
 }
 
 # Self-membership so the operator who ran 'just azure' has immediate admin access
 resource "azuread_group_member" "aks_admin_self" {
   group_object_id  = azuread_group.aks_admins.object_id
   member_object_id = data.azuread_client_config.current.object_id
+
+  lifecycle {
+    ignore_changes = [member_object_id]
+  }
 }

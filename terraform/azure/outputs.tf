@@ -72,3 +72,8 @@ output "traefik_lb_ip" {
 # (cert-manager Azure DNS solver) and main_resource_group_name (Traefik Service
 # azure-load-balancer-resource-group annotation). Same value today; if prod ever
 # splits them, add separate outputs at that point.
+
+output "ci_client_id" {
+  description = "Client ID of trakrf-infra-ci app registration (GitHub secret: AZURE_CLIENT_ID)"
+  value       = azuread_application.trakrf_infra_ci.client_id
+}
