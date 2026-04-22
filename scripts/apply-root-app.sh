@@ -51,6 +51,12 @@ case "$CLUSTER" in
     ;;
 esac
 
+EXTRA_ARGS=()
+if [[ -n "${TARGET_REVISION:-}" ]]; then
+  echo "TARGET_REVISION override: $TARGET_REVISION"
+  EXTRA_ARGS+=(--set "targetRevision=$TARGET_REVISION")
+fi
+
 echo "Installing trakrf-root chart (cluster=$CLUSTER)..."
 helm upgrade --install trakrf-root argocd/root \
   --namespace argocd \
@@ -62,7 +68,8 @@ helm upgrade --install trakrf-root argocd/root \
   --set subscriptionId="$SUB_ID" \
   --set dnsZoneResourceGroup="$DNS_RG" \
   --set traefikLbIp="$LB_IP" \
-  --set mainResourceGroupName="$MAIN_RG"
+  --set mainResourceGroupName="$MAIN_RG" \
+  "${EXTRA_ARGS[@]}"
 
 echo
 echo "Root app installed. Watch sync with:"
