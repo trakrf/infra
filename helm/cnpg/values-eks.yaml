@@ -1,0 +1,2 @@
+# EKS overrides for CNPG operator — none today. Scaffold kept for
+# uniform `just cnpg-bootstrap <cluster>` argument handling.

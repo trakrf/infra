@@ -1,0 +1,7 @@
+# EKS overrides for trakrf-backend (preserved from pre-TRA-438 values.yaml)
+
+image:
+  tag: sha-9f22fac
+
+ingress:
+  host: eks.trakrf.app

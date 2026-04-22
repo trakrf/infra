@@ -1,0 +1,64 @@
+# Common CNPG+Timescale defaults. Storage class + affinity per cluster overlay.
+# Managed role secrets (trakrf-app-credentials, trakrf-migrate-credentials) are
+# created out-of-band by `just db-secrets` — do not template them here.
+
+fullnameOverride: trakrf-db
+
+cluster:
+  instances: 1
+  imageName: ghcr.io/clevyr/cloudnativepg-timescale:17.2-ts2.18
+
+postgresql:
+  sharedPreloadLibraries:
+    - timescaledb
+  parameters:
+    timescaledb.license: timescale
+    password_encryption: scram-sha-256
+
+bootstrap:
+  initdb:
+    database: trakrf
+    owner: trakrf-migrate
+    postInitTemplateSQL:
+      - CREATE EXTENSION IF NOT EXISTS timescaledb
+    postInitSQL:
+      - CREATE ROLE "trakrf-app" LOGIN
+    postInitApplicationSQL:
+      - CREATE SCHEMA trakrf AUTHORIZATION "trakrf-migrate"
+      - GRANT CONNECT ON DATABASE trakrf TO "trakrf-app"
+      - GRANT USAGE ON SCHEMA trakrf TO "trakrf-app"
+      - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app"
+      - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT USAGE, SELECT ON SEQUENCES TO "trakrf-app"
+      # RLS policies on trakrf.* tables read current_setting('app.current_org_id')
+      # without missing_ok=true, so any query against those tables from a session
+      # that never did SET LOCAL app.current_org_id = ... errors with SQLSTATE 42704
+      # (unrecognized configuration parameter). The backend's WithOrgTx wrapper
+      # sets this per-request, but a few call sites (e.g. BatchLookupTags) query
+      # the pool directly. Set a sentinel default of '0' (no real org has that id,
+      # so RLS still returns 0 rows — no cross-org leakage) so those call sites
+      # fail soft (empty result) rather than 500.
+      - ALTER ROLE "trakrf-app" SET app.current_org_id = '0'
+
+managedRoles:
+  - name: trakrf-app
+    ensure: present
+    login: true
+    superuser: false
+    createdb: false
+    createrole: false
+    passwordSecretName: trakrf-app-credentials
+  - name: trakrf-migrate
+    ensure: present
+    login: true
+    superuser: false
+    createdb: true
+    createrole: false
+    passwordSecretName: trakrf-migrate-credentials
+
+storage:
+  size: 10Gi
+  class: ""              # REQUIRED — set in values-<cluster>.yaml
+
+affinity:
+  nodeSelector: {}
+  tolerations: []

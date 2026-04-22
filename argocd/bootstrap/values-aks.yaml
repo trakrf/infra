@@ -1,0 +1,4 @@
+# AKS-specific ArgoCD install values. None today — ArgoCD itself doesn't
+# need Azure API access in this phase (pulls from git, writes to cluster).
+# If/when we wire up ArgoCD to talk to Azure (e.g. Azure Key Vault
+# plugin, SSO via Entra), workload-identity SA annotations go here.

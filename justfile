@@ -52,20 +52,64 @@ azure: (_backend-conf "terraform/azure")
 s3-ls:
     @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
 
-# Install ArgoCD via Helm and apply root app-of-apps
-argocd-bootstrap:
-    @grep -rq 'ARGOCD_IRSA_ROLE_ARN' argocd/ && { echo "ERROR: Replace ARGOCD_IRSA_ROLE_ARN placeholder in argocd/ before bootstrapping."; echo "Get the ARN with: tofu -chdir=terraform/aws output -json irsa_role_arns | jq -r .argocd"; exit 1; } || true
+# Fetch AKS kubeconfig via az CLI, convert to azurecli auth (needs kubelogin)
+aks-creds:
+    @RG=$(tofu -chdir=terraform/azure output -raw resource_group_name) && \
+     CLUSTER=$(tofu -chdir=terraform/azure output -raw cluster_name) && \
+     az aks get-credentials --resource-group $RG --name $CLUSTER --overwrite-existing && \
+     kubelogin convert-kubeconfig -l azurecli && \
+     kubectl config use-context $CLUSTER
+
+# Install CNPG operator (direct helm — stays out of ArgoCD, CRD chicken-and-egg)
+cnpg-bootstrap CLUSTER:
+    @echo "Adding cnpg Helm repo..."
+    @helm repo add cnpg https://cloudnative-pg.github.io/charts
+    @helm repo update cnpg
+    @echo "Installing cloudnative-pg operator ({{CLUSTER}}) into cnpg-system..."
+    @helm upgrade --install cnpg cnpg/cloudnative-pg \
+      --version 0.28.* \
+      --namespace cnpg-system --create-namespace \
+      -f helm/cnpg/values.yaml \
+      -f helm/cnpg/values-{{CLUSTER}}.yaml
+    @echo "Waiting for operator to be ready..."
+    @kubectl rollout status deployment/cnpg-cloudnative-pg -n cnpg-system --timeout=120s
+
+# Create trakrf namespace + CNPG role secrets from .env.local (idempotent)
+db-secrets:
+    @kubectl create namespace trakrf --dry-run=client -o yaml | kubectl apply -f -
+    @test -n "${TRAKRF_APP_DB_PASSWORD:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD not set in .env.local"; exit 1; }
+    @test -n "${TRAKRF_MIGRATE_DB_PASSWORD:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD not set in .env.local"; exit 1; }
+    @kubectl create secret generic trakrf-app-credentials -n trakrf \
+      --from-literal=username=trakrf-app \
+      --from-literal=password="${TRAKRF_APP_DB_PASSWORD}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl create secret generic trakrf-migrate-credentials -n trakrf \
+      --from-literal=username=trakrf-migrate \
+      --from-literal=password="${TRAKRF_MIGRATE_DB_PASSWORD}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    @echo "Secrets applied (or unchanged)."
+
+# Install ArgoCD via Helm + install trakrf-root app-of-apps for the given cluster
+argocd-bootstrap CLUSTER:
     @echo "Adding ArgoCD Helm repo..."
     @helm repo add argo https://argoproj.github.io/argo-helm
     @helm repo update argo
-    @echo "Installing ArgoCD into argocd namespace..."
-    @helm install argocd argo/argo-cd --namespace argocd --create-namespace -f argocd/bootstrap/values.yaml
+    @echo "Installing ArgoCD into argocd namespace ({{CLUSTER}})..."
+    @helm upgrade --install argocd argo/argo-cd \
+      --namespace argocd --create-namespace \
+      -f argocd/bootstrap/values.yaml \
+      -f argocd/bootstrap/values-{{CLUSTER}}.yaml
     @echo "Waiting for ArgoCD server to be ready..."
     @kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
-    @echo "Applying root app-of-apps..."
+    @echo "Applying AppProject..."
     @kubectl apply -f argocd/projects/trakrf.yaml
-    @kubectl apply -f argocd/root.yaml
+    @echo "Installing trakrf-root app-of-apps..."
+    @./scripts/apply-root-app.sh {{CLUSTER}}
     @echo "ArgoCD bootstrap complete. Run 'just argocd-password' for the admin password."
+
+# Run scripted smoke preconditions (see scripts/smoke-aks.sh)
+smoke-aks:
+    @./scripts/smoke-aks.sh
 
 # Fetch ArgoCD initial admin password
 argocd-password:
@@ -76,17 +120,18 @@ argocd-ui:
     @echo "ArgoCD UI at https://<host-ip>:8080 (admin / <just argocd-password>)"
     @kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
 
-# Install kube-prometheus-stack into monitoring namespace
-monitoring-bootstrap:
+# Install kube-prometheus-stack into monitoring namespace (direct helm, not ArgoCD)
+monitoring-bootstrap CLUSTER:
     @echo "Adding prometheus-community Helm repo..."
     @helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     @helm repo update prometheus-community
-    @echo "Installing kube-prometheus-stack into monitoring namespace..."
+    @echo "Installing kube-prometheus-stack ({{CLUSTER}}) into monitoring namespace..."
     @helm upgrade --install kube-prometheus-stack \
       prometheus-community/kube-prometheus-stack \
       --version 83.4.1 \
       --namespace monitoring --create-namespace \
-      -f helm/monitoring/values.yaml
+      -f helm/monitoring/values.yaml \
+      -f helm/monitoring/values-{{CLUSTER}}.yaml
     @echo "Waiting for Grafana to be ready..."
     @kubectl rollout status deployment/kube-prometheus-stack-grafana -n monitoring --timeout=300s
     @echo "Building dashboards ConfigMap from helm/monitoring/dashboards/..."
@@ -96,8 +141,10 @@ monitoring-bootstrap:
       --dry-run=client -o yaml \
       | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
       | kubectl apply --server-side --force-conflicts -f -
-    @echo "Applying out-of-chart manifests (CNPG ServiceMonitor, dashboards)..."
+    @echo "Applying cluster-agnostic manifests (CNPG ServiceMonitor, dashboards)..."
     @kubectl apply --server-side --force-conflicts -n monitoring -f helm/monitoring/manifests/
+    @echo "Applying {{CLUSTER}}-specific manifests (Grafana IngressRoute with {{CLUSTER}} host)..."
+    @kubectl apply --server-side --force-conflicts -n monitoring -f helm/monitoring/manifests-{{CLUSTER}}/
 
 # Fetch Grafana admin password
 grafana-password:

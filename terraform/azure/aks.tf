@@ -49,6 +49,12 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   local_account_disabled = false
 
+  # OIDC issuer + workload identity — required for cert-manager (and future
+  # workloads) to federate K8s ServiceAccount tokens with Entra identities
+  # via Azure's token exchange. Enabled in TRA-438.
+  oidc_issuer_enabled       = true
+  workload_identity_enabled = true
+
   tags = local.common_tags
 }
 

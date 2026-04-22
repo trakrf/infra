@@ -1,0 +1,11 @@
+{{- include "trakrf.application" (dict
+  "name" "traefik-config"
+  "path" "helm/traefik-config"
+  "namespace" .Values.namespaces.traefik
+  "syncWave" "0"
+  "cluster" .Values.cluster
+  "repoURL" .Values.repoURL
+  "targetRevision" .Values.targetRevision
+  "destination" .Values.destination
+  "inlineValues" ""
+) }}

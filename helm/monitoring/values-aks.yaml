@@ -1,0 +1,24 @@
+# helm/monitoring/values-aks.yaml
+# AKS-specific monitoring overrides — managed-csi storage + AKS Grafana host
+
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi
+
+grafana:
+  persistence:
+    storageClassName: managed-csi
+  grafana.ini:
+    server:
+      domain: grafana.aks.trakrf.app
+      root_url: https://grafana.aks.trakrf.app

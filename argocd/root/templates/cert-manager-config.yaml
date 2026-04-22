@@ -1,0 +1,21 @@
+{{- $inlineValues := "" -}}
+{{- if eq .Values.cluster "aks" -}}
+{{- /* Azure DNS solver with workload identity — NO top-level tenantID/clientID
+       allowed alongside managedIdentity per cert-manager webhook. */ -}}
+{{- $inlineValues = printf "azureDNS:\n  resourceGroupName: %s\n  subscriptionID: %s\n  managedIdentity:\n    clientID: %s\n"
+    .Values.dnsZoneResourceGroup
+    .Values.subscriptionId
+    .Values.certManagerIdentityClientId
+-}}
+{{- end -}}
+{{- include "trakrf.application" (dict
+  "name" "cert-manager-config"
+  "path" "helm/cert-manager-config"
+  "namespace" .Values.namespaces.certManager
+  "syncWave" "0"
+  "cluster" .Values.cluster
+  "repoURL" .Values.repoURL
+  "targetRevision" .Values.targetRevision
+  "destination" .Values.destination
+  "inlineValues" $inlineValues
+) }}

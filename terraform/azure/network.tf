@@ -19,6 +19,33 @@ resource "azurerm_network_security_group" "aks_nodes" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
+  # TRA-438 — Allow public ingress on 80 + 443 to Traefik. Default Azure NSG
+  # rules deny internet inbound; AKS's cloud-controller doesn't auto-add
+  # ingress rules when the LB's public IP is outside the MC_ RG.
+  security_rule {
+    name                       = "AllowHttpsInbound"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "AllowHttpInbound"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+
   tags = local.common_tags
 }
 

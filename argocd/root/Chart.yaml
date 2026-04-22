@@ -1,0 +1,5 @@
+apiVersion: v2
+name: trakrf-root
+description: TrakRF app-of-apps — ArgoCD Applications composed per cluster
+type: application
+version: 0.1.0

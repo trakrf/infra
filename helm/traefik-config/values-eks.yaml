@@ -1,0 +1,3 @@
+# EKS overlay — no cluster-specific overrides for traefik-config today.
+# Scaffold preserved for the uniform multi-cluster pattern (root-app
+# Application always references values-<cluster>.yaml).

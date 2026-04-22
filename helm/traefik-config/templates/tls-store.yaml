@@ -1,8 +1,8 @@
 apiVersion: traefik.io/v1alpha1
 kind: TLSStore
 metadata:
-  name: default
-  namespace: traefik
+  name: {{ .Values.tlsStore.name }}
+  namespace: {{ .Values.tlsStore.namespace }}
 spec:
   defaultCertificate:
-    secretName: trakrf-wildcard-tls
+    secretName: {{ .Values.tlsStore.defaultCertificateSecret }}

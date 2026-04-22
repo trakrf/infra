@@ -1,0 +1,62 @@
+# ArgoCD itself — upstream argo-helm chart. Self-manages after initial bootstrap.
+# Cluster-specific SA annotations injected inline; for AKS no cloud annotation
+# is needed in this phase (ArgoCD pulls from git, writes to cluster).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: "9.5.*"
+    helm:
+      values: |
+        global:
+          domain: ""
+        # Server-side diff enables managedFieldsManagers in ignoreDifferences
+        # (modern ArgoCD 2.10+ default). Mirrors argocd/bootstrap/values.yaml
+        # so the self-managed ArgoCD doesn't revert the controller flag.
+        configs:
+          cm:
+            controller.diff.server.side: "true"
+          params:
+            controller.diff.server.side: "true"
+        server:
+          {{- if eq .Values.cluster "eks" }}
+          serviceAccount:
+            annotations:
+              eks.amazonaws.com/role-arn: "arn:aws:iam::252374924199:role/trakrf-demo-argocd"
+          {{- end }}
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+        controller:
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits:   { cpu: "1",  memory: 512Mi }
+        repoServer:
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+        redis:
+          resources:
+            requests: { cpu: 50m,  memory: 64Mi }
+            limits:   { cpu: 200m, memory: 128Mi }
+        dex:
+          enabled: false
+        notifications:
+          enabled: false
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: {{ .Values.namespaces.argocd }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

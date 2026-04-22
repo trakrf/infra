@@ -1,0 +1,17 @@
+# EKS uses Cloudflare DNS-01 solver (existing pre-TRA-438 behavior, preserved)
+
+solver: cloudflare
+
+cloudflare:
+  apiTokenSecretName: cloudflare-api-token
+  apiTokenSecretKey: api-token
+  zones:
+    - trakrf.app
+
+certificate:
+  name: trakrf-app-wildcard
+  commonName: trakrf.app
+  dnsNames:
+    - trakrf.app
+    - "*.trakrf.app"
+    - "*.eks.trakrf.app"

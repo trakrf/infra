@@ -13,3 +13,25 @@ resource "azurerm_dns_zone" "aks_trakrf_app" {
     prevent_destroy = true
   }
 }
+
+# Apex A record — browser hits https://aks.trakrf.app
+resource "azurerm_dns_a_record" "aks_apex" {
+  name                = "@"
+  zone_name           = azurerm_dns_zone.aks_trakrf_app.name
+  resource_group_name = azurerm_resource_group.main.name
+  ttl                 = 300
+  records             = [azurerm_public_ip.traefik.ip_address]
+
+  tags = merge(local.common_tags, { Ticket = "TRA-438" })
+}
+
+# Wildcard — grafana.aks.trakrf.app, anything.aks.trakrf.app
+resource "azurerm_dns_a_record" "aks_wildcard" {
+  name                = "*"
+  zone_name           = azurerm_dns_zone.aks_trakrf_app.name
+  resource_group_name = azurerm_resource_group.main.name
+  ttl                 = 300
+  records             = [azurerm_public_ip.traefik.ip_address]
+
+  tags = merge(local.common_tags, { Ticket = "TRA-438" })
+}

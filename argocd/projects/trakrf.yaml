@@ -46,6 +46,8 @@ spec:
       kind: "*"
     - group: "cert-manager.io"
       kind: ClusterIssuer
+    - group: "networking.k8s.io"
+      kind: IngressClass
   namespaceResourceBlacklist:
     - group: ""
       kind: ResourceQuota

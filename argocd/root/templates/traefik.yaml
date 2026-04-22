@@ -1,0 +1,47 @@
+# Traefik — upstream chart. AKS injects static LB IP + azure-load-balancer-
+# resource-group annotation so cloud-controller binds to the TF-managed PIP.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://traefik.github.io/charts
+    chart: traefik
+    targetRevision: "39.*"
+    helm:
+      values: |
+        deployment:
+          replicas: 2
+        podDisruptionBudget:
+          enabled: true
+          minAvailable: 1
+        # Allow IngressRoutes in trakrf/monitoring/etc namespaces to reference
+        # the shared default-chain Middleware in the traefik namespace.
+        # Default in Traefik v3 is false; our chart layout depends on it.
+        providers:
+          kubernetesCRD:
+            allowCrossNamespace: true
+        {{- if eq .Values.cluster "aks" }}
+        service:
+          spec:
+            loadBalancerIP: {{ .Values.traefikLbIp | quote }}
+          annotations:
+            service.beta.kubernetes.io/azure-load-balancer-resource-group: {{ .Values.mainResourceGroupName | quote }}
+        {{- end }}
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: {{ .Values.namespaces.traefik }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

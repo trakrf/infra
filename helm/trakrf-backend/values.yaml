@@ -7,7 +7,8 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/trakrf/backend
-  tag: sha-9f22fac
+  # tag MUST be set in values-<cluster>.yaml — templates use {{ required ... }} to enforce
+  tag: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -27,9 +28,10 @@ serviceMonitor:
   scrapeTimeout: 10s
 
 # Public ingress (Traefik IngressRoute CRD). TRA-381.
+# host is cluster-specific — overridden in values-<cluster>.yaml
 ingress:
   enabled: true
-  host: eks.trakrf.app
+  host: ""
   # Default chain (security-headers + redirect-https) lives in helm/traefik-config.
   middlewares:
     - name: default-chain

@@ -1,19 +1,39 @@
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: letsencrypt-prod
+  name: {{ .Values.issuer.name }}
 spec:
   acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@trakrf.id
+    server: {{ .Values.acme.server }}
+    email: {{ .Values.acme.email }}
     privateKeySecretRef:
-      name: letsencrypt-prod-account-key
+      name: {{ .Values.acme.privateKeySecretRef }}
     solvers:
+      {{- if eq .Values.solver "cloudflare" }}
       - dns01:
           cloudflare:
             apiTokenSecretRef:
-              name: cloudflare-api-token
-              key: api-token
+              name: {{ .Values.cloudflare.apiTokenSecretName }}
+              key: {{ .Values.cloudflare.apiTokenSecretKey }}
         selector:
           dnsZones:
-            - trakrf.app
+            {{- range .Values.cloudflare.zones }}
+            - {{ . }}
+            {{- end }}
+      {{- else if eq .Values.solver "azureDNS" }}
+      # Workload-identity auth: only managedIdentity.clientID in the auth section.
+      # cert-manager's webhook rejects the schema if top-level tenantID/clientID/
+      # clientSecretSecretRef appear alongside managedIdentity.
+      - dns01:
+          azureDNS:
+            hostedZoneName: {{ .Values.azureDNS.hostedZoneName }}
+            resourceGroupName: {{ .Values.azureDNS.resourceGroupName }}
+            subscriptionID: {{ .Values.azureDNS.subscriptionID }}
+            managedIdentity:
+              clientID: {{ .Values.azureDNS.managedIdentity.clientID }}
+        selector:
+          dnsZones:
+            - {{ .Values.azureDNS.hostedZoneName }}
+      {{- else }}
+      {{- fail (printf "Unknown solver type: %q (expected 'cloudflare' or 'azureDNS')" .Values.solver) }}
+      {{- end }}

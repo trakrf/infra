@@ -1,0 +1,14 @@
+# EKS pins the DB to the dedicated single-AZ database node group for PV
+# stability (TRA-364). Storage: gp3 (the EKS default StorageClass).
+
+storage:
+  class: gp3
+
+affinity:
+  nodeSelector:
+    workload: database
+  tolerations:
+    - key: workload
+      operator: Equal
+      value: database
+      effect: NoSchedule

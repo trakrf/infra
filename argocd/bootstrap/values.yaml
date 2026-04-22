@@ -1,15 +1,23 @@
-# ArgoCD Helm values — minimal bootstrap for trakrf-demo EKS cluster
+# ArgoCD Helm values — common multi-cluster defaults.
 # Chart: argo/argo-cd ~9.5
-# After bootstrap, ArgoCD self-manages via app-of-apps pattern.
-# Changes to these values take effect via the self-management Application in argocd/applications/argocd.yaml.
+# Cluster-specific overrides (e.g. EKS IRSA SA annotations) live in
+# argocd/bootstrap/values-<cluster>.yaml, selected by `just argocd-bootstrap CLUSTER`.
+# After bootstrap, ArgoCD self-manages via the argocd Application in argocd/root/.
 
 global:
   domain: ""  # No ingress — access via port-forward
 
+# Server-side diff enables managedFieldsManagers in ignoreDifferences —
+# ArgoCD asks the Kubernetes API for a 3-way diff that respects field
+# ownership. Without this, only jsonPointers/jqPathExpressions work.
+# This is the modern recommended default in ArgoCD 2.10+.
+configs:
+  cm:
+    controller.diff.server.side: "true"
+  params:
+    controller.diff.server.side: "true"
+
 server:
-  serviceAccount:
-    annotations:
-      eks.amazonaws.com/role-arn: "arn:aws:iam::252374924199:role/trakrf-demo-argocd"
   resources:
     requests:
       cpu: 100m

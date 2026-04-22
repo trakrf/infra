@@ -1,1 +1,10 @@
-# Intentionally empty — manifests are static.
+# Common Traefik-config values.
+# Both EKS and AKS use the same Certificate secret name (cert-manager-config
+# common values set certificate.secretName: trakrf-wildcard-tls for both),
+# so the TLSStore default matches here. Self-hosters pointing at a different
+# cert may override in values-<cluster>.yaml.
+
+tlsStore:
+  name: default
+  namespace: traefik
+  defaultCertificateSecret: trakrf-wildcard-tls

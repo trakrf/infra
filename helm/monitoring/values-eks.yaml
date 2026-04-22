@@ -1,0 +1,24 @@
+# helm/monitoring/values-eks.yaml
+# EKS-specific monitoring overrides (moved from pre-TRA-438 values.yaml)
+
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+
+grafana:
+  persistence:
+    storageClassName: gp3
+  grafana.ini:
+    server:
+      domain: grafana.eks.trakrf.app
+      root_url: https://grafana.eks.trakrf.app

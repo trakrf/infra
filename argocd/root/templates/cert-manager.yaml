@@ -1,0 +1,59 @@
+# cert-manager — upstream jetstack chart. For AKS we set workload-identity
+# SA annotations so cert-manager pods federate into the UAI that TF created.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: "v1.16.*"
+    helm:
+      values: |
+        crds:
+          enabled: true
+        replicaCount: 2
+        podDisruptionBudget:
+          enabled: true
+        {{- if eq .Values.cluster "aks" }}
+        serviceAccount:
+          labels:
+            azure.workload.identity/use: "true"
+          annotations:
+            azure.workload.identity/client-id: {{ .Values.certManagerIdentityClientId | quote }}
+        podLabels:
+          azure.workload.identity/use: "true"
+        {{- end }}
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: {{ .Values.namespaces.certManager }}
+  # cainjector populates caBundle at runtime; k8s admissionsenforcer auto-
+  # injects namespaceSelector (exclude kube-system etc.). Both are expected
+  # operator/platform behavior, not drift.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: cert-manager-webhook
+      managedFieldsManagers:
+        - cert-manager-cainjector
+        - admissionsenforcer
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: cert-manager-webhook
+      managedFieldsManagers:
+        - cert-manager-cainjector
+        - admissionsenforcer
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

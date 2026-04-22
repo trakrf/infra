@@ -1,18 +1,18 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: trakrf-app-wildcard
-  namespace: traefik
+  name: {{ .Values.certificate.name }}
+  namespace: {{ .Values.certificate.namespace }}
 spec:
-  secretName: trakrf-wildcard-tls
+  secretName: {{ .Values.certificate.secretName }}
   issuerRef:
-    name: letsencrypt-prod
+    name: {{ .Values.issuer.name }}
     kind: ClusterIssuer
-  commonName: trakrf.app
+  commonName: {{ .Values.certificate.commonName }}
   dnsNames:
-    - trakrf.app
-    - "*.trakrf.app"
-    - "*.eks.trakrf.app"
+    {{- range .Values.certificate.dnsNames }}
+    - {{ . | quote }}
+    {{- end }}
   privateKey:
     algorithm: ECDSA
     size: 256
