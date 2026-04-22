@@ -28,7 +28,6 @@ prometheus:
     storageSpec:
       volumeClaimTemplate:
         spec:
-          storageClassName: gp3
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
@@ -42,7 +41,6 @@ alertmanager:
     storage:
       volumeClaimTemplate:
         spec:
-          storageClassName: gp3
           accessModes: ["ReadWriteOnce"]
           resources:
             requests:
@@ -50,18 +48,11 @@ alertmanager:
 
 grafana:
   defaultDashboardsEnabled: true
-  # Public hostname so generated links (alerts, shares) resolve externally.
-  # Ingress itself is in manifests/grafana-ingressroute.yaml (TRA-386).
-  grafana.ini:
-    server:
-      domain: grafana.eks.trakrf.app
-      root_url: https://grafana.eks.trakrf.app
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits:   { cpu: 500m, memory: 256Mi }
   persistence:
     enabled: true
-    storageClassName: gp3
     size: 5Gi
   sidecar:
     dashboards:
