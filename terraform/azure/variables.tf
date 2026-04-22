@@ -38,3 +38,21 @@ variable "vnet_cidr" {
   description = "CIDR block for the VNet"
   default     = "10.143.0.0/16"
 }
+
+variable "kubernetes_version" {
+  type        = string
+  description = "Kubernetes version for the AKS cluster"
+  default     = "1.35"
+}
+
+variable "primary_pool_zone" {
+  type        = string
+  description = "Availability zone for the primary node pool (single-AZ pin for CNPG PV stability). Zone 3 required: this subscription blocks D-ps_v5 ARM SKUs in zones 1 and 2."
+  default     = "3"
+}
+
+variable "acr_name" {
+  type        = string
+  description = "ACR name (globally unique, alphanumeric 5-50 chars)"
+  default     = "trakrf"
+}
