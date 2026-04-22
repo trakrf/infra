@@ -21,12 +21,14 @@ spec:
             - {{ . }}
             {{- end }}
       {{- else if eq .Values.solver "azureDNS" }}
+      # Workload-identity auth: only managedIdentity.clientID in the auth section.
+      # cert-manager's webhook rejects the schema if top-level tenantID/clientID/
+      # clientSecretSecretRef appear alongside managedIdentity.
       - dns01:
           azureDNS:
             hostedZoneName: {{ .Values.azureDNS.hostedZoneName }}
             resourceGroupName: {{ .Values.azureDNS.resourceGroupName }}
             subscriptionID: {{ .Values.azureDNS.subscriptionID }}
-            tenantID: {{ .Values.azureDNS.tenantID }}
             managedIdentity:
               clientID: {{ .Values.azureDNS.managedIdentity.clientID }}
         selector:

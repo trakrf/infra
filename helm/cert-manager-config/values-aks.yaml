@@ -9,7 +9,6 @@ azureDNS:
   hostedZoneName: aks.trakrf.app
   resourceGroupName: REPLACE_ME
   subscriptionID: REPLACE_ME
-  tenantID: REPLACE_ME
   managedIdentity:
     clientID: REPLACE_ME
 
