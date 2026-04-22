@@ -28,13 +28,13 @@ Update the Linear issue to match once this spec is approved (or leave the diverg
 | Decision | Choice | Rationale |
 |---|---|---|
 | Node topology | Single on-demand primary pool, no separate DB pool, Spot burst deferred | EKS dual-pool left one node under-utilized on a single-env demo. One right-sized on-demand node is cheaper and predictably stable for DB workloads. |
-| Primary pool SKU | `Standard_D4ps_v5` (ARM, 4 vCPU / 16 GB) | Matches EKS `t3.xlarge` vCPU/RAM. ARM chosen despite multi-arch image risk (see below) for cost + parity with the burst pool we'll add in TRA-438. |
+| Primary pool SKU | `Standard_D4ps_v6` (ARM Cobalt 100, 4 vCPU / 16 GB) | Matches EKS `t3.xlarge` vCPU/RAM. ARM chosen despite multi-arch image risk (see below) for cost + parity with the burst pool we'll add in TRA-438. **Originally `Standard_D4ps_v5`; switched to v6 after first apply hit `ErrCode_InsufficientVCPUQuota` on `standardDPSv5Family` (0/0 vCPU). The v6 family (`StandardDpsv6Family`) has the standard 10-vCPU quota.** |
 | Primary pool zone | Zone `3` | Single-AZ pin required for CNPG PV stability (DB lives on this node). Zone 1 originally chosen, but this subscription has `NotAvailableForSubscription` restrictions on D-ps_v5 (ARM) SKUs in zones 1 and 2 — zone 3 is the only zone where ARM works. Verified 2026-04-22 via `az vm list-skus`. |
 | ACR name | `trakrf` (bare) | Globally unique check passed; no "demo" baked in so name survives a future prod migration. |
 | Kubernetes version | `1.35` (latest GA) | Greenfield build; full smoke test downstream regardless of version; no reason to lag. |
 | Admin auth model | AAD enabled + local accounts enabled | Entra-backed `kubectl` by default, `az aks get-credentials --admin` as escape hatch; flip `local_account_disabled = true` later without state-destroying changes. |
 | Admin group provisioning | Create `trakrf-aks-admins` Entra group in Terraform | Existing tenant has only `TOS` (dead POC); declarative membership makes teammate onboarding trivial. |
-| Primary SKU ARM/x86 fallback | None — hardcoded `Standard_D4ps_v5` | Multi-arch image work is out of scope for this phase; let `tofu apply` fail loudly if ARM on-demand unavailable in southcentralus rather than silently downgrading to amd64. |
+| Primary SKU ARM/x86 fallback | None — hardcoded `Standard_D4ps_v6` | Multi-arch image work is out of scope for this phase; let `tofu apply` fail loudly if ARM on-demand unavailable in southcentralus rather than silently downgrading to amd64. |
 
 ## Operational plan (post-apply, phase-3 scope)
 
@@ -48,7 +48,7 @@ Update the Linear issue to match once this spec is approved (or leave the diverg
 
 **`terraform/azure/aks.tf`**
 - `azurerm_kubernetes_cluster "main"` — Azure CNI Overlay, AAD-RBAC enabled, `SystemAssigned` identity.
-  - Default pool: `Standard_D4ps_v5` (ARM), `priority = "Regular"` (on-demand), `node_count = 1`, `zones = [var.primary_pool_zone]` (default `"1"`), 50 GB OS disk, attached to `azurerm_subnet.aks_nodes`.
+  - Default pool: `Standard_D4ps_v6` (ARM), `priority = "Regular"` (on-demand), `node_count = 1`, `zones = [var.primary_pool_zone]` (default `"1"`), 50 GB OS disk, attached to `azurerm_subnet.aks_nodes`.
   - `network_profile`: `network_plugin = "azure"`, `network_plugin_mode = "overlay"`, `pod_cidr = "10.244.0.0/16"`, `service_cidr = "10.245.0.0/16"`, `dns_service_ip = "10.245.0.10"`, `load_balancer_sku = "standard"`.
   - AAD block: `azure_rbac_enabled = true`, `admin_group_object_ids = [azuread_group.aks_admins.object_id]`. `local_account_disabled = false`.
 - **No** `azurerm_kubernetes_cluster_node_pool` resource in this phase. Burst pool lands in TRA-438.
@@ -121,14 +121,14 @@ From the Linear issue, plus smoke tests:
 - [ ] `tofu -chdir=terraform/cloudflare plan` shows no drift after apply.
 - [ ] `az aks get-credentials --resource-group rg-trakrf-demo-ussc --name aks-trakrf-demo-ussc` succeeds.
 - [ ] `kubectl cluster-info` returns control-plane + coredns endpoints.
-- [ ] `kubectl get nodes` shows 1 node in zone 1 with `Standard_D4ps_v5` SKU.
+- [ ] `kubectl get nodes` shows 1 node in zone 1 with `Standard_D4ps_v6` SKU.
 - [ ] `nslookup aks.trakrf.app @1.1.1.1` returns four Azure NS records.
 - [ ] `dig NS aks.trakrf.app +trace` shows delegation chain terminating at Azure DNS.
 - [ ] `az acr login --name trakrf` succeeds.
 
 ## Risks & watch-list
 
-- **ARM on-demand availability in southcentralus**: pre-flight with `az vm list-skus -l southcentralus --resource-type virtualMachines --query "[?name=='Standard_D4ps_v5']" -o table`. If unavailable, the apply fails; decision is to *not* bake in a fallback SKU for this phase.
+- **ARM on-demand availability in southcentralus**: pre-flight with `az vm list-skus -l southcentralus --resource-type virtualMachines --query "[?name=='Standard_D4ps_v6']" -o table`. If unavailable, the apply fails; decision is to *not* bake in a fallback SKU for this phase.
 - **Entra group creation permissions**: the Terraform apply needs the current az CLI principal to have `Group.ReadWrite.All` (usually present for tenant owners). If it fails, fall back to pre-creating the group manually and passing the object ID as a variable.
 - **Cross-module apply ordering**: `just cloudflare` must run *after* `just azure` so that the remote-state read sees `dns_nameservers`. If `cloudflare` is applied stale, the NS record count will be 0; re-applying after `just azure` picks up the outputs. Safe either direction — just rerunnable.
 - **Single point of failure**: with one primary node running everything, node replacement (SKU resize, k8s upgrade, hardware failure) downs the entire stack until the replacement is ready. Acceptable for demo; revisit if promoted to preview/prod.

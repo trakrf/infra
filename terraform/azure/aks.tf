@@ -10,7 +10,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # Primary (system) pool — on-demand ARM, single-AZ for CNPG PV stability
   default_node_pool {
     name            = "primary"
-    vm_size         = "Standard_D4ps_v5"
+    vm_size         = "Standard_D4ps_v6"
     vnet_subnet_id  = azurerm_subnet.aks_nodes.id
     node_count      = 1
     zones           = [var.primary_pool_zone]

@@ -4,7 +4,7 @@
 
 **Goal:** Stand up a working AKS cluster with ACR attached, Azure DNS for `aks.trakrf.app`, and Cloudflare NS delegation. First apply of the Azure module.
 
-**Architecture:** Single on-demand `Standard_D4ps_v5` ARM primary node runs everything (DB + app + platform). No separate database pool. Spot burst pool deferred to TRA-438. Azure CNI Overlay networking. AAD-RBAC with an Entra `trakrf-aks-admins` group created in-module. ACR at `trakrf.azurecr.io`, attached to AKS via `AcrPull` on the kubelet identity. Cloudflare delegates `aks.trakrf.app` to Azure DNS via cross-module remote-state read (mirrors the existing `aws-delegation.tf` pattern).
+**Architecture:** Single on-demand `Standard_D4ps_v6` ARM primary node runs everything (DB + app + platform). No separate database pool. Spot burst pool deferred to TRA-438. Azure CNI Overlay networking. AAD-RBAC with an Entra `trakrf-aks-admins` group created in-module. ACR at `trakrf.azurecr.io`, attached to AKS via `AcrPull` on the kubelet identity. Cloudflare delegates `aks.trakrf.app` to Azure DNS via cross-module remote-state read (mirrors the existing `aws-delegation.tf` pattern).
 
 **Tech Stack:** OpenTofu, `hashicorp/azurerm ~> 4.0`, `hashicorp/azuread ~> 3.0`, `hashicorp/cloudflare ~> 4.x` (already used), Cloudflare R2 via S3 backend, just, direnv.
 
@@ -43,7 +43,7 @@ CI (`.github/workflows/ci.yml`) runs `tofu-validate` with `-backend=false` for e
 
 ### Task 1: Pre-flight — verify ARM SKU availability
 
-Not a code change — a go/no-go gate. If `Standard_D4ps_v5` isn't available in `southcentralus`, the apply will fail later and we need to know *now* so we can escalate. Per the spec's "let it fail loudly" decision, there's no fallback SKU baked into the code.
+Not a code change — a go/no-go gate. If `Standard_D4ps_v6` isn't available in `southcentralus`, the apply will fail later and we need to know *now* so we can escalate. Per the spec's "let it fail loudly" decision, there's no fallback SKU baked into the code.
 
 **Files:** none
 
@@ -52,7 +52,7 @@ Not a code change — a go/no-go gate. If `Standard_D4ps_v5` isn't available in 
 Run:
 ```bash
 az vm list-skus -l southcentralus --resource-type virtualMachines \
-  --query "[?name=='Standard_D4ps_v5'].{name:name, locations:locations, restrictions:restrictions}" \
+  --query "[?name=='Standard_D4ps_v6'].{name:name, locations:locations, restrictions:restrictions}" \
   -o jsonc
 ```
 
@@ -350,7 +350,7 @@ EOF
 
 ### Task 7: Create AKS cluster (`aks.tf`)
 
-Single on-demand ARM primary pool (`Standard_D4ps_v5`, zone 1, `node_count = 1`). Azure CNI Overlay. AAD-RBAC enabled pointing at `azuread_group.aks_admins`. `local_account_disabled = false` so `az aks get-credentials --admin` still works as an escape hatch.
+Single on-demand ARM primary pool (`Standard_D4ps_v6`, zone 1, `node_count = 1`). Azure CNI Overlay. AAD-RBAC enabled pointing at `azuread_group.aks_admins`. `local_account_disabled = false` so `az aks get-credentials --admin` still works as an escape hatch.
 
 **Files:**
 - Create: `terraform/azure/aks.tf`
@@ -372,7 +372,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   # Primary (system) pool — on-demand ARM, single-AZ for CNPG PV stability
   default_node_pool {
     name            = "primary"
-    vm_size         = "Standard_D4ps_v5"
+    vm_size         = "Standard_D4ps_v6"
     vnet_subnet_id  = azurerm_subnet.aks_nodes.id
     node_count      = 1
     zones           = [var.primary_pool_zone]
@@ -433,7 +433,7 @@ git commit -m "$(cat <<'EOF'
 feat(tra-437): add AKS cluster (single on-demand ARM primary)
 
 k8s 1.35, Azure CNI Overlay, AAD-RBAC via trakrf-aks-admins group.
-Standard_D4ps_v5 on-demand primary pinned to zone 1 for CNPG PV
+Standard_D4ps_v6 on-demand primary pinned to zone 1 for CNPG PV
 stability. AcrPull granted to kubelet identity on ACR scope.
 
 Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
@@ -531,7 +531,7 @@ The key is: **no destroys, no surprises outside the spec**. If you see unexpecte
 - [ ] **Step 2: Spot-check plan output**
 
 Confirm by eye:
-- `azurerm_kubernetes_cluster.main` — `default_node_pool.vm_size = "Standard_D4ps_v5"`, `zones = ["1"]`, `node_count = 1`, `kubernetes_version = "1.35"`.
+- `azurerm_kubernetes_cluster.main` — `default_node_pool.vm_size = "Standard_D4ps_v6"`, `zones = ["1"]`, `node_count = 1`, `kubernetes_version = "1.35"`.
 - `azurerm_container_registry.main` — `name = "trakrf"`, `sku = "Basic"`, `admin_enabled = false`.
 - `azurerm_dns_zone.aks_trakrf_app` — `name = "aks.trakrf.app"`.
 - `azuread_group.aks_admins` — `display_name = "trakrf-aks-admins"`.
@@ -787,7 +787,7 @@ The spec deviates from the Linear issue's dual-pool topology. Update TRA-437 so 
 Via the `linear-server` MCP tool or the Linear UI, update TRA-437 description to replace the dual-pool section with:
 
 > **Topology** (revised 2026-04-22 during brainstorming; see `docs/superpowers/specs/2026-04-22-tra-437-aks-demo-phase-2-design.md`):
-> - Single on-demand `Standard_D4ps_v5` (ARM) primary pool, zone 1, `node_count = 1`. Runs everything.
+> - Single on-demand `Standard_D4ps_v6` (ARM) primary pool, zone 1, `node_count = 1`. Runs everything.
 > - No separate `database` node pool.
 > - Spot burst pool deferred to TRA-438.
 
@@ -812,7 +812,7 @@ git push -u origin feature/tra-437-aks-phase-2
 ```bash
 gh pr create --title "feat(tra-437): AKS demo phase 2 — cluster + ACR + Azure DNS + CF delegation" --body "$(cat <<'EOF'
 ## Summary
-- Stands up AKS cluster `aks-trakrf-demo-ussc` with single on-demand `Standard_D4ps_v5` ARM primary node (zone 1, k8s 1.35, Azure CNI Overlay, AAD-RBAC via `trakrf-aks-admins` Entra group).
+- Stands up AKS cluster `aks-trakrf-demo-ussc` with single on-demand `Standard_D4ps_v6` ARM primary node (zone 1, k8s 1.35, Azure CNI Overlay, AAD-RBAC via `trakrf-aks-admins` Entra group).
 - Provisions ACR `trakrf.azurecr.io` (Basic SKU, admin disabled) with `AcrPull` on the AKS kubelet identity.
 - Creates Azure DNS zone for `aks.trakrf.app` and delegates via Cloudflare NS records on `trakrf.app`.
 
@@ -822,7 +822,7 @@ gh pr create --title "feat(tra-437): AKS demo phase 2 — cluster + ACR + Azure 
 - [x] `tofu -chdir=terraform/azure plan` shows no drift after apply
 - [x] `tofu -chdir=terraform/cloudflare plan` shows no drift after apply
 - [x] `kubectl cluster-info` returns control plane + coredns endpoints
-- [x] `kubectl get nodes` shows 1 node in zone 1 with `Standard_D4ps_v5` SKU
+- [x] `kubectl get nodes` shows 1 node in zone 1 with `Standard_D4ps_v6` SKU
 - [x] `az acr login --name trakrf` succeeds
 - [x] `nslookup -type=NS aks.trakrf.app 1.1.1.1` returns four Azure NS records
 - [x] `dig NS aks.trakrf.app +trace` resolves to Azure DNS
