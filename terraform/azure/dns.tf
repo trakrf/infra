@@ -5,4 +5,11 @@ resource "azurerm_dns_zone" "aks_trakrf_app" {
   resource_group_name = azurerm_resource_group.main.name
 
   tags = local.common_tags
+
+  # Zone holds the delegation that Cloudflare NS records point at. Azure assigns
+  # random nameservers at create time, so destroying it forces CF NS rotation on
+  # every rebuild. Mirrors the prevent_destroy pattern on aws_route53_zone.
+  lifecycle {
+    prevent_destroy = true
+  }
 }

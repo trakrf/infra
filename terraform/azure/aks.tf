@@ -16,6 +16,14 @@ resource "azurerm_kubernetes_cluster" "main" {
     zones           = [var.primary_pool_zone]
     os_disk_size_gb = 50
 
+    # Match Azure's auto-defaults so plan stays clean. Without these declared,
+    # the provider keeps trying to remove the inferred upgrade_settings block.
+    upgrade_settings {
+      drain_timeout_in_minutes      = 0
+      max_surge                     = "10%"
+      node_soak_duration_in_minutes = 0
+    }
+
     tags = local.common_tags
   }
 
