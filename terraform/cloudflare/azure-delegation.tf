@@ -21,13 +21,19 @@ data "terraform_remote_state" "azure" {
 
 # Create NS records in Cloudflare to delegate aks.trakrf.app to Azure DNS.
 # Note: delegation lives on the trakrf.app zone (not trakrf.id like aws-delegation.tf).
+# tolist() needed because azurerm_dns_zone.name_servers is a set, not a list (differs
+# from aws_route53_zone.name_servers which IS a list — hence aws-delegation.tf indexes directly).
+locals {
+  azure_nameservers = tolist(data.terraform_remote_state.azure.outputs.dns_nameservers)
+}
+
 resource "cloudflare_record" "aks_subdomain_ns" {
-  count = length(data.terraform_remote_state.azure.outputs.dns_nameservers)
+  count = length(local.azure_nameservers)
 
   zone_id = cloudflare_zone.trakrf_app.id
   name    = "aks"
   type    = "NS"
-  content = data.terraform_remote_state.azure.outputs.dns_nameservers[count.index]
+  content = local.azure_nameservers[count.index]
   ttl     = 3600
 
   comment = "Delegate aks.trakrf.app to Azure DNS"
