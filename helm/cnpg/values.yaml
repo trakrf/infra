@@ -1,0 +1,15 @@
+# Common CNPG operator overrides for the upstream cnpg/cloudnative-pg chart.
+# Applied via `just cnpg-bootstrap <cluster>` — see helm/cnpg/README.md.
+#
+# TRA-360 note: Clevyr 17.2-ts2.18 timescale image works with operator 0.28.x.
+# Chart version is pinned in the justfile recipe, not here.
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
