@@ -6,7 +6,7 @@ locals {
     Project     = var.project
     Environment = var.environment
     ManagedBy   = "terraform"
-    Ticket      = "TRA-436"
+    Ticket      = "TRA-437"
   }
 }
 
