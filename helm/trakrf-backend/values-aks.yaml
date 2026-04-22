@@ -1,11 +1,10 @@
 # AKS overrides for trakrf-backend.
-# Tag is currently pinned to an amd64-only sha (TRA-451 has not yet shipped
-# the multi-arch CI fix). Deployment will apply successfully, pods will
-# ImagePullBackOff on the arm64 primary node with "no matching manifest
-# for linux/arm64" until TRA-451 merges and we bump to a multi-arch tag.
+# Pinned to the first multi-arch tag published post-TRA-451 (sha-dfb5841
+# is the trakrf/platform merge commit of PR #187 that added linux/arm64
+# to the docker-build workflow matrix).
 
 image:
-  tag: sha-9f22fac
+  tag: sha-dfb5841
 
 ingress:
   host: aks.trakrf.app
