@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [aws, cloudflare, bootstrap]
+        dir: [aws, azure, cloudflare, bootstrap]
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
