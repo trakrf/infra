@@ -1,7 +1,10 @@
 {{- /* CNPG operator fills runtime defaults on the Cluster spec
        (connectionLimit, inRoles, etc.). Ignore fields owned by the
        operator's field manager to silence cosmetic OutOfSync. */ -}}
-{{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - cloudnative-pg\n" -}}
+{{- /* CNPG's Go client uses the default field manager name "manager".
+       Ignoring fields owned by it filters out all operator-filled
+       defaults (podAntiAffinityType, connectionLimit, inherit, etc.). */ -}}
+{{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - manager\n" -}}
 {{- include "trakrf.application" (dict
   "name" "trakrf-db"
   "path" "helm/trakrf-db"
