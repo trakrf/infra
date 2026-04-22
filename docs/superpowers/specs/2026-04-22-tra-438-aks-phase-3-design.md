@@ -152,7 +152,7 @@ New Helm chart, single touchpoint for cluster binding.
 - `Chart.yaml` — `name: trakrf-root`, `apiVersion: v2`
 - `values.yaml` — `cluster: aks`, `repoURL`, `targetRevision`, `destination.server`, namespace map, and tofu-sourced values (`certManagerIdentityClientId`, `traefikLbIp`, etc.) as placeholders populated at install time by `scripts/apply-root-app.sh`
 - `templates/_helpers.tpl` — one `trakrf.application` helper templating the common Application shape (sync policy, sync options, finalizer, `valueFiles: [values.yaml, values-{{ .cluster }}.yaml]`)
-- `templates/*.yaml` — 7 Applications (CNPG operator + kube-prometheus-stack are standalone helm installs, see "Direct helm installs" below):
+- `templates/*.yaml` — 8 Applications (CNPG operator + kube-prometheus-stack are standalone helm installs, see "Direct helm installs" below):
   - argocd (self-hosting of ArgoCD)
   - cert-manager (jetstack upstream, SA workload-identity annotation)
   - cert-manager-config (our chart)
