@@ -45,6 +45,7 @@ Prereq PR status is tracked in Linear on TRA-438, not this spec.
 | Multi-cluster pattern | **Values overlay** (`values.yaml` + `values-<cluster>.yaml`), not template duplication or ApplicationSet | Multi-cloud narrative is useful for TrakRF presentation; ApplicationSet is premature with one cluster; static references keep debugging simple and upgrade cleanly to ApplicationSet when EKS returns. |
 | ArgoCD wiring | **App-of-apps root Helm chart** (`argocd/root/`) with `cluster: <name>` as the single mapping touchpoint | Self-hoster friendly: `cp values-aks.yaml values-homelab.yaml`, flip one line, rebootstrap. |
 | Platform scope | **EKS parity** — cert-manager, Traefik, kube-prometheus-stack, CNPG, trakrf-backend, trakrf-ingester, ArgoCD | Grafana drives the node-sizing feedback loop from `project_aks_demo_topology`; one-line monitoring overlay is trivial given the rest is already parameterized. |
+| Delivery mechanism | **Root-app Applications for most; direct helm for CNPG operator + kube-prometheus-stack** | `project_argocd_lessons` — kube-prom's ~50+ ConfigMaps/CRDs OOM the ArgoCD controller; CNPG's pre-install hooks depend on CRDs the same chart installs (chicken-and-egg). Same values-overlay pattern either way. |
 | Image strategy | **Skip ACR**; pull from GHCR directly | trakrf images are public; AcrPull wiring from TRA-437 already exercised by its role assignment; ACR push is phase-4 CI concern. |
 | Traefik LB IP | **Static public IP** in main RG, TF-managed; A records for `@` + `*` in same apply | IP stability across cluster rebuilds was the whole point of delegating `aks.trakrf.app` to Azure DNS under TF. |
 | CNPG | **Wrap bare CR in `helm/trakrf-db/` chart** | Uniform Helm-shaped deployables; retires misleading `argocd/clusters/trakrf/` path. |
@@ -116,9 +117,15 @@ Pattern: every chart's current `values.yaml` splits into `values.yaml` (common) 
 - `values-aks.yaml`: `service.spec.loadBalancerIP: <traefik_lb_ip>`, `service.annotations."service.beta.kubernetes.io/azure-load-balancer-resource-group": <main_resource_group_name>`
 - `values-eks.yaml`: whatever AWS LB annotations existed (or empty)
 
-**`helm/monitoring/`**
+**`helm/monitoring/`** (applied via `just monitoring-bootstrap CLUSTER`, not ArgoCD — see "Direct helm installs")
 - `values-eks.yaml`: `storageClassName: gp3` (existing)
 - `values-aks.yaml`: `storageClassName: managed-csi`, Grafana ingress `host: grafana.aks.trakrf.app`
+
+**`helm/cnpg/`** (new wrapper; applied via `just cnpg-bootstrap CLUSTER`, not ArgoCD — see "Direct helm installs")
+- `values.yaml`: common CNPG operator config (replica count, resources)
+- `values-aks.yaml`: any Azure-specific tweaks (likely empty for phase 3)
+- `values-eks.yaml`: existing EKS tweaks or empty
+- No `templates/` — this is a values-only wrapper around the upstream `cnpg/cloudnative-pg` chart
 
 **`helm/trakrf-backend/`**
 - `values-eks.yaml`: `ingress.host: eks.trakrf.app`
@@ -145,23 +152,30 @@ New Helm chart, single touchpoint for cluster binding.
 - `Chart.yaml` — `name: trakrf-root`, `apiVersion: v2`
 - `values.yaml` — `cluster: aks`, `repoURL`, `targetRevision`, `destination.server`, namespace map, and tofu-sourced values (`certManagerIdentityClientId`, `traefikLbIp`, etc.) as placeholders populated at install time by `scripts/apply-root-app.sh`
 - `templates/_helpers.tpl` — one `trakrf.application` helper templating the common Application shape (sync policy, sync options, finalizer, `valueFiles: [values.yaml, values-{{ .cluster }}.yaml]`)
-- `templates/*.yaml` — 9 Applications:
+- `templates/*.yaml` — 7 Applications (CNPG operator + kube-prometheus-stack are standalone helm installs, see "Direct helm installs" below):
+  - argocd (self-hosting of ArgoCD)
   - cert-manager (jetstack upstream, SA workload-identity annotation)
   - cert-manager-config (our chart)
   - traefik (upstream)
   - traefik-config (our chart)
-  - cnpg-operator (cnpg.io upstream)
   - trakrf-db (our chart, new)
-  - monitoring (kube-prometheus-stack via our wrapper chart)
   - trakrf-backend
   - trakrf-ingester
 
 **Sync-wave ordering** (`argocd.argoproj.io/sync-wave` annotation):
-- `-2`: cert-manager, cnpg-operator — operators first so CRDs exist
-- `-1`: cert-manager-config, traefik — ClusterIssuer + ingress controller
-- `0`: traefik-config, trakrf-db, monitoring — depend on CRDs + issuer
+- `-1`: cert-manager, traefik — operators/controllers with CRDs
+- `0`: cert-manager-config, traefik-config, trakrf-db — depend on CRDs + issuer
 - `1`: trakrf-backend — depends on DB ready (schema migration Job)
 - `2`: trakrf-ingester — depends on backend Service + DB
+
+### Direct helm installs (not managed by the root-app)
+
+Two components stay as direct helm installs via justfile recipes, each with the same values-overlay pattern (`values.yaml` + `values-<cluster>.yaml`):
+
+- **CNPG operator** (`cnpg-system` ns) — `just cnpg-bootstrap CLUSTER`. Reason: CNPG's pre-install hooks depend on CRDs the same chart installs; ArgoCD doesn't gracefully handle the cycle. Documented in `docs/superpowers/specs/2026-04-12-trakrf-db-design.md`.
+- **kube-prometheus-stack** (`monitoring` ns) — `just monitoring-bootstrap CLUSTER`. Reason: ~50+ ConfigMaps/CRDs OOM the ArgoCD application-controller at demo-cluster resource sizing. Documented in `project_argocd_lessons` memory.
+
+These still share the multi-cloud values pattern, so a self-hoster changing clusters flips the same `CLUSTER` arg across all three bootstrap commands (`cnpg-bootstrap`, `monitoring-bootstrap`, `argocd-bootstrap`).
 
 ### Bootstrap scripts and justfile recipes
 
@@ -173,6 +187,8 @@ New Helm chart, single touchpoint for cluster binding.
 
 **Justfile additions/changes**
 - `aks-creds` (new) — `az aks get-credentials … && kubelogin convert-kubeconfig -l azurecli`
+- `cnpg-bootstrap CLUSTER` (new) — `helm upgrade --install cnpg cnpg/cloudnative-pg -n cnpg-system -f helm/cnpg/values.yaml -f helm/cnpg/values-{{CLUSTER}}.yaml`
+- `monitoring-bootstrap CLUSTER` (modified to take CLUSTER arg) — same pattern with kube-prometheus-stack values
 - `db-secrets` (new) — creates `trakrf-app-credentials` and `trakrf-migrate-credentials` in the `trakrf` namespace using `kubectl apply --dry-run=client -o yaml | kubectl apply -f -` pattern; reads passwords from `.env.local`
 - `argocd-bootstrap CLUSTER` (modified — takes arg) — installs ArgoCD with cluster-appropriate values, then runs `scripts/apply-root-app.sh $CLUSTER`
 - `smoke-aks` (new) — precondition checks (see Smoke test section)
