@@ -49,7 +49,7 @@ jobs:
       - name: Write backend.conf
         run: printf 'endpoints = { s3 = "%s" }\n' "$R2_ENDPOINT" > backend.conf
       - name: Tofu init
-        run: tofu init -backend-config=backend.conf -backend-config=profile=
+        run: tofu init -backend-config=backend.conf
       - name: Tofu plan
         run: tofu plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
       - name: Comment plan on PR
@@ -58,13 +58,19 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('terraform/azure/plan_output.txt', 'utf8');
-            const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n...(truncated)' : plan;
+            let body;
+            try {
+              const plan = fs.readFileSync('terraform/azure/plan_output.txt', 'utf8');
+              const truncated = plan.length > 60000 ? plan.substring(0, 60000) + '\n...(truncated)' : plan;
+              body = `### Terraform Plan (terraform/azure)\n\n\`\`\`\n${truncated}\n\`\`\``;
+            } catch (err) {
+              body = `### Terraform Plan (terraform/azure)\n\nPlan output unavailable (likely a job failure before plan completed). See the workflow logs for details.\n\nError: \`${err.message}\``;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `### Terraform Plan (terraform/azure)\n\n\`\`\`\n${truncated}\n\`\`\``
+              body: body
             });
 
   apply:
@@ -84,6 +90,6 @@ jobs:
       - name: Write backend.conf
         run: printf 'endpoints = { s3 = "%s" }\n' "$R2_ENDPOINT" > backend.conf
       - name: Tofu init
-        run: tofu init -backend-config=backend.conf -backend-config=profile=
+        run: tofu init -backend-config=backend.conf
       - name: Tofu apply
         run: tofu apply -auto-approve

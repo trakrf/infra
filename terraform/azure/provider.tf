@@ -21,7 +21,6 @@ terraform {
     bucket  = "tf-state"
     key     = "azure.tfstate"
     region  = "auto"
-    profile = "cloudflare-r2"
 
     skip_credentials_validation = true
     skip_region_validation      = true
