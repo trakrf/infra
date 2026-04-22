@@ -22,6 +22,12 @@ spec:
         podDisruptionBudget:
           enabled: true
           minAvailable: 1
+        # Allow IngressRoutes in trakrf/monitoring/etc namespaces to reference
+        # the shared default-chain Middleware in the traefik namespace.
+        # Default in Traefik v3 is false; our chart layout depends on it.
+        providers:
+          kubernetesCRD:
+            allowCrossNamespace: true
         {{- if eq .Values.cluster "aks" }}
         service:
           spec:
