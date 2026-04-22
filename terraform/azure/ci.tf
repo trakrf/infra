@@ -5,11 +5,19 @@
 resource "azuread_application" "trakrf_infra_ci" {
   display_name = "trakrf-infra-ci"
   owners       = [data.azuread_client_config.current.object_id]
+
+  lifecycle {
+    ignore_changes = [owners]
+  }
 }
 
 resource "azuread_service_principal" "trakrf_infra_ci" {
   client_id = azuread_application.trakrf_infra_ci.client_id
   owners    = [data.azuread_client_config.current.object_id]
+
+  lifecycle {
+    ignore_changes = [owners]
+  }
 }
 
 resource "azuread_application_federated_identity_credential" "gha_pr" {
