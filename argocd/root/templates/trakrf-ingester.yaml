@@ -1,0 +1,11 @@
+{{- include "trakrf.application" (dict
+  "name" "trakrf-ingester"
+  "path" "helm/trakrf-ingester"
+  "namespace" .Values.namespaces.trakrf
+  "syncWave" "2"
+  "cluster" .Values.cluster
+  "repoURL" .Values.repoURL
+  "targetRevision" .Values.targetRevision
+  "destination" .Values.destination
+  "inlineValues" ""
+) }}
