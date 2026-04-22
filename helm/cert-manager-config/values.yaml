@@ -1,0 +1,20 @@
+# Common ACME config — cluster-specific solver and SANs go in values-<cluster>.yaml
+
+acme:
+  email: admin@trakrf.id
+  server: https://acme-v02.api.letsencrypt.org/directory
+  privateKeySecretRef: letsencrypt-prod-account-key
+
+issuer:
+  name: letsencrypt-prod
+
+# Solver type: "cloudflare" or "azureDNS" — overridden per cluster
+solver: ""
+
+# Certificate SANs — overridden per cluster
+certificate:
+  name: trakrf-wildcard
+  namespace: traefik
+  secretName: trakrf-wildcard-tls
+  commonName: ""
+  dnsNames: []

@@ -1,0 +1,21 @@
+# AKS uses Azure DNS solver via workload identity.
+# Real values come from scripts/apply-root-app.sh (tofu outputs) injected
+# into the root-app Application's inline helm.values at install time.
+# The placeholders below are docs only.
+
+solver: azureDNS
+
+azureDNS:
+  hostedZoneName: aks.trakrf.app
+  resourceGroupName: REPLACE_ME
+  subscriptionID: REPLACE_ME
+  tenantID: REPLACE_ME
+  managedIdentity:
+    clientID: REPLACE_ME
+
+certificate:
+  name: trakrf-aks-wildcard
+  commonName: aks.trakrf.app
+  dnsNames:
+    - aks.trakrf.app
+    - "*.aks.trakrf.app"
