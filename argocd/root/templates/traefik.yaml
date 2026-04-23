@@ -38,6 +38,14 @@ spec:
         service:
           spec:
             loadBalancerIP: {{ .Values.traefikLbIp | quote }}
+        # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM pools;
+        # AKS Ubuntu does not. See TRA-470. Traefik v3 values put `tolerations`
+        # at the top level, not under `deployment.`.
+        tolerations:
+          - key: kubernetes.io/arch
+            operator: Equal
+            value: arm64
+            effect: NoSchedule
         {{- end }}
   destination:
     server: {{ .Values.destination.server }}

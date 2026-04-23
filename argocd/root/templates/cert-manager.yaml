@@ -36,6 +36,32 @@ spec:
         serviceAccount:
           annotations:
             iam.gke.io/gcp-service-account: {{ .Values.certManagerGcpServiceAccountEmail | quote }}
+        # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM pools;
+        # AKS Ubuntu does not. See TRA-470. Tolerations on all four pod-
+        # generating cert-manager subcomponents.
+        tolerations:
+          - key: kubernetes.io/arch
+            operator: Equal
+            value: arm64
+            effect: NoSchedule
+        webhook:
+          tolerations:
+            - key: kubernetes.io/arch
+              operator: Equal
+              value: arm64
+              effect: NoSchedule
+        cainjector:
+          tolerations:
+            - key: kubernetes.io/arch
+              operator: Equal
+              value: arm64
+              effect: NoSchedule
+        startupapicheck:
+          tolerations:
+            - key: kubernetes.io/arch
+              operator: Equal
+              value: arm64
+              effect: NoSchedule
         {{- end }}
   destination:
     server: {{ .Values.destination.server }}

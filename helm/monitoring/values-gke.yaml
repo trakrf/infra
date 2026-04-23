@@ -1,5 +1,7 @@
 # helm/monitoring/values-gke.yaml
-# GKE-specific monitoring overrides — premium-rwo storage + GKE Grafana host
+# GKE-specific monitoring overrides — premium-rwo storage + GKE Grafana host +
+# per-subcomponent ARM tolerations (GKE auto-taints ARM pools; AKS does not).
+# See TRA-470 and memory feedback_gke_arm_auto_taint.
 
 prometheus:
   prometheusSpec:
@@ -7,6 +9,11 @@ prometheus:
       volumeClaimTemplate:
         spec:
           storageClassName: premium-rwo
+    tolerations:
+      - key: kubernetes.io/arch
+        operator: Equal
+        value: arm64
+        effect: NoSchedule
 
 alertmanager:
   alertmanagerSpec:
@@ -14,6 +21,11 @@ alertmanager:
       volumeClaimTemplate:
         spec:
           storageClassName: premium-rwo
+    tolerations:
+      - key: kubernetes.io/arch
+        operator: Equal
+        value: arm64
+        effect: NoSchedule
 
 grafana:
   persistence:
@@ -22,3 +34,29 @@ grafana:
     server:
       domain: grafana.gke.trakrf.app
       root_url: https://grafana.gke.trakrf.app
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+prometheusOperator:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+kube-state-metrics:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+prometheus-node-exporter:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule

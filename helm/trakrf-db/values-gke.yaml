@@ -1,9 +1,18 @@
 # GKE topology: single t2a-standard-4 on-demand primary node runs everything
-# (DB + app + platform). No separate DB pool, no affinity — the scheduler
+# (DB + app + platform). No separate DB pool, no nodeSelector — the scheduler
 # picks the only available node. Storage: premium-rwo (pd-ssd) for IOPS
 # headroom over the standard-rwo (pd-balanced) default.
 
 storage:
   class: premium-rwo
 
-# affinity intentionally empty — inherits defaults (nodeSelector {}, tolerations [])
+# GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM node pools
+# (T2A/T2D/Axion). AKS Ubuntu does not. CNPG Cluster needs the toleration
+# on spec.affinity.tolerations. Scoped to GKE overlay only. See TRA-470
+# and memory feedback_gke_arm_auto_taint.
+affinity:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
