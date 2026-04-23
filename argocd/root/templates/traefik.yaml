@@ -19,6 +19,15 @@ spec:
       values: |
         deployment:
           replicas: 2
+          {{- if eq .Values.cluster "gke" }}
+          # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM pools;
+          # AKS Ubuntu does not. See TRA-470.
+          tolerations:
+            - key: kubernetes.io/arch
+              operator: Equal
+              value: arm64
+              effect: NoSchedule
+          {{- end }}
         podDisruptionBudget:
           enabled: true
           minAvailable: 1
@@ -38,14 +47,6 @@ spec:
         service:
           spec:
             loadBalancerIP: {{ .Values.traefikLbIp | quote }}
-        # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM pools;
-        # AKS Ubuntu does not. See TRA-470.
-        deployment:
-          tolerations:
-            - key: kubernetes.io/arch
-              operator: Equal
-              value: arm64
-              effect: NoSchedule
         {{- end }}
   destination:
     server: {{ .Values.destination.server }}
