@@ -126,6 +126,10 @@ argocd-bootstrap CLUSTER:
 smoke-aks:
     @./scripts/smoke-aks.sh
 
+# Run scripted smoke preconditions (see scripts/smoke-gke.sh)
+smoke-gke:
+    @./scripts/smoke-gke.sh
+
 # Fetch ArgoCD initial admin password
 argocd-password:
     @kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d && echo
