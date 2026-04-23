@@ -54,9 +54,11 @@ mqtt:
   # Non-secret
   clientId: trakrf-ingester
   topic: "trakrf/scans/#"
-  # Secret. Full URL including credentials, e.g.
-  #   mqtts://user:pass@broker.emqxcloud.com:8883
-  url: ""
+  # MQTT_URL (full URL with credentials) is read from an out-of-band Secret
+  # created by `just ingester-secrets` — same pattern as trakrf-app-credentials.
+  # ArgoCD-managed charts can't source from gitignored values files, so the
+  # Secret is kubectl-created separately from MQTT_URL env in .env.local.
+  credentialsSecret: trakrf-mqtt-credentials
 
 # Prometheus metrics exposed by Redpanda Connect's built-in HTTP server.
 metrics:
