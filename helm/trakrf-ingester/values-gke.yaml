@@ -1,2 +1,7 @@
-# GKE overlay — no cluster-specific overrides for trakrf-ingester today.
-# See values-eks.yaml for why this is empty.
+# GKE overlay — distinct MQTT clientId so GKE doesn't collide with Railway
+# prod or other cluster ingesters on the shared EMQX Cloud broker (MQTT
+# evicts duplicate clientId sessions, producing reconnect flap). One-line
+# tweak per overlay; base `trakrf-ingester` default stays intact for any
+# bare helm install without a cluster overlay.
+mqtt:
+  clientId: trakrf-ingester-gke
