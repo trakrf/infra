@@ -38,3 +38,9 @@ variable "cluster_name" {
   description = "Name of the GKE cluster (applied in phase 2)"
   default     = "trakrf-demo"
 }
+
+variable "node_machine_type" {
+  type        = string
+  description = "Machine type for the primary GKE node pool. Default is t2a-standard-4 (ARM Ampere, 4 vCPU / 16 GB). Override to t2a-standard-2 via TF_VAR_node_machine_type in .env.local if T2A quota is tight."
+  default     = "t2a-standard-4"
+}
