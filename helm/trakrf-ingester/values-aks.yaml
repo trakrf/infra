@@ -1,2 +1,5 @@
-# AKS overlay — no cluster-specific overrides for trakrf-ingester today.
-# See values-eks.yaml for why this is empty.
+# AKS overlay — distinct MQTT clientId so AKS doesn't collide with Railway
+# prod or other cluster ingesters on the shared EMQX Cloud broker. See
+# values-gke.yaml for rationale.
+mqtt:
+  clientId: trakrf-ingester-aks

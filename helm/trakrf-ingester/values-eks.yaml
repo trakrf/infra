@@ -1,4 +1,6 @@
-# EKS overlay — no cluster-specific overrides for trakrf-ingester today.
-# Ingester runs entirely in-cluster (MQTT in, CNPG out via trakrf-db-rw
-# service, same hostname on any cluster). Scaffold kept for uniform
-# valueFiles references from argocd/root.
+# EKS overlay — distinct MQTT clientId so EKS doesn't collide with Railway
+# prod or other cluster ingesters on the shared EMQX Cloud broker. See
+# values-gke.yaml for rationale. (EKS is currently burned down per TRA-381;
+# this override applies when the stack is rebuilt.)
+mqtt:
+  clientId: trakrf-ingester-eks
