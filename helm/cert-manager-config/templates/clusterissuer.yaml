@@ -34,6 +34,20 @@ spec:
         selector:
           dnsZones:
             - {{ .Values.azureDNS.hostedZoneName }}
+      {{- else if eq .Values.solver "cloudDNS" }}
+      # GKE Workload Identity — no token/secret in spec; cert-manager pod SA
+      # is annotated with iam.gke.io/gcp-service-account (set by
+      # argocd/root/templates/cert-manager.yaml).
+      # NOTE: cloudDNS.hostedZoneName is the Cloud DNS managed-zone RESOURCE
+      # NAME (e.g. "gke-trakrf-app"), NOT the DNS name. cloudDNS.dnsZoneName
+      # is the DNS name used in the selector.
+      - dns01:
+          cloudDNS:
+            project: {{ .Values.cloudDNS.project }}
+            hostedZoneName: {{ .Values.cloudDNS.hostedZoneName }}
+        selector:
+          dnsZones:
+            - {{ .Values.cloudDNS.dnsZoneName }}
       {{- else }}
-      {{- fail (printf "Unknown solver type: %q (expected 'cloudflare' or 'azureDNS')" .Values.solver) }}
+      {{- fail (printf "Unknown solver type: %q (expected 'cloudflare', 'azureDNS', or 'cloudDNS')" .Values.solver) }}
       {{- end }}
