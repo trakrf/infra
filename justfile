@@ -48,6 +48,13 @@ azure: (_backend-conf "terraform/azure")
     @tofu -chdir=terraform/azure plan -out=tfplan
     @tofu -chdir=terraform/azure apply tfplan
 
+# Plan and apply GCP infrastructure (GKE, Cloud DNS, Artifact Registry)
+gcp: (_backend-conf "terraform/gcp")
+    @echo "Planning GCP infrastructure..."
+    @tofu -chdir=terraform/gcp init -backend-config=backend.conf
+    @tofu -chdir=terraform/gcp plan -out=tfplan
+    @tofu -chdir=terraform/gcp apply tfplan
+
 # List objects in the R2 terraform state bucket
 s3-ls:
     @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
