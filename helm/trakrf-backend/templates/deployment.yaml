@@ -29,6 +29,12 @@ spec:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ required "image.tag must be set (usually in values-<cluster>.yaml)" .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Invoke the `serve` subcommand explicitly. The image CMD is just
+          # ["/server"] and bare /server hangs after Logger init when env
+          # vars are present (reproduced on GKE 1.35.1 COS; likely also on
+          # AKS with same image). migrate-job.yaml uses the same explicit
+          # form for `/server migrate`.
+          command: ["/server", "serve"]
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           ports:

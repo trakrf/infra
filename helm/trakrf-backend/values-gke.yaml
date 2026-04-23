@@ -9,22 +9,3 @@ image:
 
 ingress:
   host: gke.trakrf.app
-
-# GKE COS nodes ship with a stricter default seccomp/apparmor profile than
-# AKS Ubuntu. With NO_NEW_PRIVS (allowPrivilegeEscalation=false) or
-# readOnlyRootFilesystem=true, the Go runtime hangs after `Logger initialized`
-# and never reaches `Server starting` — no panic, no stderr, health probes
-# time out. Removing either knob lets the backend complete startup.
-#
-# Verified with sha-a99b5b8 on t2a-standard-4 (GKE 1.35.1, COS 6.12.55).
-# Working pod logs reach "Server starting port=8080"; failing pod stops at
-# "Logger initialized" every time.
-#
-# Demo-grade relaxation — follow-up is to either (a) narrow to the specific
-# capability/syscall the backend needs, or (b) switch node image to Ubuntu
-# (`image_type = UBUNTU_CONTAINERD` in terraform/gcp/gke.tf).
-securityContext:
-  allowPrivilegeEscalation: true
-  capabilities:
-    drop: []
-  readOnlyRootFilesystem: false
