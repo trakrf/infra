@@ -1,4 +1,44 @@
-# GKE overlay — no cluster-specific overrides for ArgoCD bootstrap.
-# ArgoCD itself does not need GCP API access (no Workload Identity SA
-# binding). Scaffold kept for uniform `just argocd-bootstrap <cluster>`
-# argument handling.
+# GKE overlay. ArgoCD itself needs the ARM taint toleration on every
+# deployed subcomponent so it can come up on a fresh GKE cluster before
+# any user-workload reconciliation happens. dex + notifications are
+# disabled in the base values, so we only cover the five subcomponents
+# that actually schedule pods.
+#
+# GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM node pools
+# (T2A/T2D/Axion). AKS Ubuntu does not. See TRA-470 and memory
+# feedback_gke_arm_auto_taint.
+
+controller:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+server:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+repoServer:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+applicationSet:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
+
+redis:
+  tolerations:
+    - key: kubernetes.io/arch
+      operator: Equal
+      value: arm64
+      effect: NoSchedule
