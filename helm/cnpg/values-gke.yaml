@@ -1,3 +1,12 @@
-# GKE overrides for CNPG operator — none today. Single-pool topology,
-# no special scheduling. Scaffold kept for uniform `just cnpg-bootstrap
-# <cluster>` argument handling.
+# GKE overrides for CNPG operator. Single-pool topology, no special
+# scheduling beyond the ARM taint toleration.
+#
+# GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM node pools
+# (T2A/T2D/Axion). AKS Ubuntu does not. Toleration scoped to GKE overlay
+# only — base and AKS/EKS values stay untouched. See TRA-470 and memory
+# feedback_gke_arm_auto_taint.
+tolerations:
+  - key: kubernetes.io/arch
+    operator: Equal
+    value: arm64
+    effect: NoSchedule
