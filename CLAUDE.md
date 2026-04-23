@@ -13,6 +13,7 @@
 
 ## Git Workflow
 - **Never push directly to main** — all changes via PR
+- **Never merge to main locally** — push the branch and open a PR instead. When finishing a branch, default to creating a PR without asking.
 - Branch naming: `feature/add-xyz`, `fix/broken-xyz`
 - Conventional commits: `feat:`, `fix:`, `chore:`
 - Merge PRs with `--merge` (never `--squash` or `--rebase`)
