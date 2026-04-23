@@ -1,0 +1,2 @@
+# GKE overlay — no cluster-specific overrides for trakrf-ingester today.
+# See values-eks.yaml for why this is empty.
