@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Scripted precondition checks for TRA-438 AKS smoke test.
+# Scripted precondition checks for TRA-461 GKE smoke test.
 # Exits 0 if all green, non-zero on the first red check.
 #
-# Usage: scripts/smoke-aks.sh
+# Usage: scripts/smoke-gke.sh
 #
 # Env overrides:
-#   HOST      — apex hostname to probe (default: aks.trakrf.app)
-#   TF_DIR    — tofu module dir to read expected IP from (default: terraform/azure)
+#   HOST      — apex hostname to probe (default: gke.trakrf.app)
+#   TF_DIR    — tofu module dir to read expected IP from (default: terraform/gcp)
 
 set -euo pipefail
 
-HOST="${HOST:-aks.trakrf.app}"
-TF_DIR="${TF_DIR:-terraform/azure}"
+HOST="${HOST:-gke.trakrf.app}"
+TF_DIR="${TF_DIR:-terraform/gcp}"
 EXPECTED_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
 
 fail() { echo "✗ $1" >&2; exit 1; }
@@ -34,12 +34,12 @@ pass "All ArgoCD Applications Synced + Healthy (argocd self-app excluded)"
 
 # 2. cert-manager Certificate Ready
 echo "→ Checking cert-manager Certificate..."
-READY=$(kubectl -n traefik get certificate trakrf-aks-wildcard \
+READY=$(kubectl -n traefik get certificate trakrf-gke-wildcard \
   -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
 if [[ "$READY" != "True" ]]; then
-  fail "Certificate trakrf-aks-wildcard is not Ready (status: '$READY')"
+  fail "Certificate trakrf-gke-wildcard is not Ready (status: '$READY')"
 fi
-pass "Certificate trakrf-aks-wildcard Ready"
+pass "Certificate trakrf-gke-wildcard Ready"
 
 # 3. Traefik Service external IP matches tofu output
 echo "→ Checking Traefik LoadBalancer IP..."

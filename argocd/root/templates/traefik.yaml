@@ -34,6 +34,10 @@ spec:
             loadBalancerIP: {{ .Values.traefikLbIp | quote }}
           annotations:
             service.beta.kubernetes.io/azure-load-balancer-resource-group: {{ .Values.mainResourceGroupName | quote }}
+        {{- else if eq .Values.cluster "gke" }}
+        service:
+          spec:
+            loadBalancerIP: {{ .Values.traefikLbIp | quote }}
         {{- end }}
   destination:
     server: {{ .Values.destination.server }}

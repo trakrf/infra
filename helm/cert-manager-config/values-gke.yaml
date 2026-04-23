@@ -1,0 +1,23 @@
+# GKE uses the Cloud DNS solver via GKE Workload Identity.
+# Real values for cloudDNS.project + cloudDNS.hostedZoneName come from
+# scripts/apply-root-app.sh (tofu outputs) injected into the root-app
+# Application's inline helm.values at install time. The placeholders
+# below are docs only.
+
+solver: cloudDNS
+
+cloudDNS:
+  # Injected at install time — GCP project ID.
+  project: REPLACE_ME
+  # Injected at install time — Cloud DNS MANAGED ZONE RESOURCE NAME
+  # (e.g. gke-trakrf-app), not the DNS name.
+  hostedZoneName: REPLACE_ME
+  # Static — the DNS name cert-manager matches against in the selector.
+  dnsZoneName: gke.trakrf.app
+
+certificate:
+  name: trakrf-gke-wildcard
+  commonName: gke.trakrf.app
+  dnsNames:
+    - gke.trakrf.app
+    - "*.gke.trakrf.app"

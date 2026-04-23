@@ -1,0 +1,9 @@
+# GKE topology: single t2a-standard-4 on-demand primary node runs everything
+# (DB + app + platform). No separate DB pool, no affinity — the scheduler
+# picks the only available node. Storage: premium-rwo (pd-ssd) for IOPS
+# headroom over the standard-rwo (pd-balanced) default.
+
+storage:
+  class: premium-rwo
+
+# affinity intentionally empty — inherits defaults (nodeSelector {}, tolerations [])

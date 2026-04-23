@@ -51,3 +51,20 @@ output "dns_nameservers" {
   description = "Cloud DNS nameservers — consumed by Cloudflare for NS delegation"
   value       = google_dns_managed_zone.gke_trakrf_app.name_servers
 }
+
+# TRA-461 — wiring for helm values (cert-manager, Traefik)
+
+output "cert_manager_service_account_email" {
+  description = "Email of the cert-manager GCP SA (for the K8s SA iam.gke.io annotation)"
+  value       = google_service_account.cert_manager.email
+}
+
+output "cloud_dns_zone_name" {
+  description = "Cloud DNS managed-zone resource name (distinct from dns_zone_name which is the DNS name). Consumed by cert-manager cloudDNS solver."
+  value       = google_dns_managed_zone.gke_trakrf_app.name
+}
+
+output "traefik_lb_ip" {
+  description = "Static IP reserved for Traefik's LoadBalancer Service — passed as spec.loadBalancerIP"
+  value       = google_compute_address.traefik.address
+}

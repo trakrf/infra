@@ -1,0 +1,24 @@
+# helm/monitoring/values-gke.yaml
+# GKE-specific monitoring overrides — premium-rwo storage + GKE Grafana host
+
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: premium-rwo
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: premium-rwo
+
+grafana:
+  persistence:
+    storageClassName: premium-rwo
+  grafana.ini:
+    server:
+      domain: grafana.gke.trakrf.app
+      root_url: https://grafana.gke.trakrf.app

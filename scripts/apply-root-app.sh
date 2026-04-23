@@ -7,10 +7,10 @@
 #              (values-<cluster>.yaml across helm/* charts).
 #              Supported: aks, eks (future: homelab, etc.)
 #
-# For AKS reads tofu outputs from terraform/azure/. For EKS cluster is
-# burned down (TRA-381) so tofu outputs don't exist — pass blanks, the
-# EKS overlay doesn't need tofu-sourced values anyway (Cloudflare DNS
-# solver + no workload identity).
+# For AKS reads tofu outputs from terraform/azure/. For GKE reads from
+# terraform/gcp/. For EKS cluster is burned down (TRA-381) so tofu outputs
+# don't exist — pass blanks, the EKS overlay doesn't need tofu-sourced values
+# (Cloudflare DNS solver + no workload identity).
 
 set -euo pipefail
 
@@ -31,6 +31,23 @@ case "$CLUSTER" in
     MAIN_RG=$(tofu -chdir="$TF_DIR" output -raw resource_group_name)
     DNS_RG="$MAIN_RG"
     LB_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
+    GCP_PROJECT_ID=""
+    GCP_CM_SA_EMAIL=""
+    GCP_DNS_ZONE_NAME=""
+    ;;
+  gke)
+    TF_DIR="terraform/gcp"
+    # Azure fields — zero out, cluster=gke means the root templates skip them.
+    CLIENT_ID=""
+    TENANT_ID=""
+    SUB_ID=""
+    DNS_RG=""
+    MAIN_RG=""
+    # GCP-specific outputs.
+    GCP_PROJECT_ID=$(tofu -chdir="$TF_DIR" output -raw project_id)
+    GCP_CM_SA_EMAIL=$(tofu -chdir="$TF_DIR" output -raw cert_manager_service_account_email)
+    GCP_DNS_ZONE_NAME=$(tofu -chdir="$TF_DIR" output -raw cloud_dns_zone_name)
+    LB_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
     ;;
   eks)
     CLIENT_ID=""
@@ -39,6 +56,9 @@ case "$CLUSTER" in
     DNS_RG=""
     LB_IP=""
     MAIN_RG=""
+    GCP_PROJECT_ID=""
+    GCP_CM_SA_EMAIL=""
+    GCP_DNS_ZONE_NAME=""
     ;;
   *)
     echo "warning: no tofu output wiring for cluster '$CLUSTER'; passing blank values" >&2
@@ -48,6 +68,9 @@ case "$CLUSTER" in
     DNS_RG=""
     LB_IP=""
     MAIN_RG=""
+    GCP_PROJECT_ID=""
+    GCP_CM_SA_EMAIL=""
+    GCP_DNS_ZONE_NAME=""
     ;;
 esac
 
@@ -69,6 +92,9 @@ helm upgrade --install trakrf-root argocd/root \
   --set dnsZoneResourceGroup="$DNS_RG" \
   --set traefikLbIp="$LB_IP" \
   --set mainResourceGroupName="$MAIN_RG" \
+  --set gcpProjectId="$GCP_PROJECT_ID" \
+  --set certManagerGcpServiceAccountEmail="$GCP_CM_SA_EMAIL" \
+  --set cloudDnsZoneName="$GCP_DNS_ZONE_NAME" \
   "${EXTRA_ARGS[@]}"
 
 echo

@@ -7,6 +7,14 @@
     .Values.subscriptionId
     .Values.certManagerIdentityClientId
 -}}
+{{- else if eq .Values.cluster "gke" -}}
+{{- /* Cloud DNS solver via GKE Workload Identity — no secret/token in spec;
+       the K8s SA annotation (argocd/root/templates/cert-manager.yaml) does auth.
+       hostedZoneName is the Cloud DNS managed-zone RESOURCE NAME, not DNS name. */ -}}
+{{- $inlineValues = printf "cloudDNS:\n  project: %s\n  hostedZoneName: %s\n"
+    .Values.gcpProjectId
+    .Values.cloudDnsZoneName
+-}}
 {{- end -}}
 {{- include "trakrf.application" (dict
   "name" "cert-manager-config"

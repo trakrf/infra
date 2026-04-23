@@ -1,0 +1,4 @@
+# GKE overlay — no cluster-specific overrides for traefik-config today.
+# Traefik Service-level overrides (loadBalancerIP) go on the UPSTREAM
+# traefik chart's Service, injected by argocd/root/templates/traefik.yaml
+# via inline helm.values from tofu outputs — not here.

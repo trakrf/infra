@@ -30,6 +30,12 @@ spec:
             azure.workload.identity/client-id: {{ .Values.certManagerIdentityClientId | quote }}
         podLabels:
           azure.workload.identity/use: "true"
+        {{- else if eq .Values.cluster "gke" }}
+        # GKE Workload Identity — K8s SA annotation is the only wiring;
+        # no pod labels or podIdentity equivalent needed.
+        serviceAccount:
+          annotations:
+            iam.gke.io/gcp-service-account: {{ .Values.certManagerGcpServiceAccountEmail | quote }}
         {{- end }}
   destination:
     server: {{ .Values.destination.server }}

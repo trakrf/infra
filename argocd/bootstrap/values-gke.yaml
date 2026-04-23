@@ -1,0 +1,4 @@
+# GKE overlay — no cluster-specific overrides for ArgoCD bootstrap.
+# ArgoCD itself does not need GCP API access (no Workload Identity SA
+# binding). Scaffold kept for uniform `just argocd-bootstrap <cluster>`
+# argument handling.

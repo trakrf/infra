@@ -1,0 +1,3 @@
+# GKE overrides for CNPG operator — none today. Single-pool topology,
+# no special scheduling. Scaffold kept for uniform `just cnpg-bootstrap
+# <cluster>` argument handling.
