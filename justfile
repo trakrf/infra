@@ -67,6 +67,14 @@ aks-creds:
      kubelogin convert-kubeconfig -l azurecli && \
      kubectl config use-context $CLUSTER
 
+# Fetch GKE kubeconfig via gcloud. Requires gke-gcloud-auth-plugin.
+gke-creds:
+    @PROJECT=$(tofu -chdir=terraform/gcp output -raw project_id) && \
+     CLUSTER=$(tofu -chdir=terraform/gcp output -raw cluster_name) && \
+     ZONE=$(tofu -chdir=terraform/gcp output -raw zone) && \
+     gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT && \
+     kubectl config use-context gke_${PROJECT}_${ZONE}_${CLUSTER}
+
 # Install CNPG operator (direct helm — stays out of ArgoCD, CRD chicken-and-egg)
 cnpg-bootstrap CLUSTER:
     @echo "Adding cnpg Helm repo..."
