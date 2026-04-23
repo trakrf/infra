@@ -16,7 +16,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        # MQTT credentials live in an out-of-band Secret (`just ingester-secrets`),
+        # so no chart-managed checksum — rotate via `kubectl rollout restart` after
+        # updating the Secret.
       labels:
         {{- include "trakrf-ingester.selectorLabels" . | nindent 8 }}
     spec:
@@ -49,7 +51,7 @@ spec:
             - name: MQTT_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "trakrf-ingester.fullname" . }}
+                  name: {{ .Values.mqtt.credentialsSecret }}
                   key: MQTT_URL
             - name: PG_PASSWORD
               valueFrom:

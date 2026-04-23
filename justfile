@@ -104,6 +104,17 @@ db-secrets:
       --dry-run=client -o yaml | kubectl apply -f -
     @echo "Secrets applied (or unchanged)."
 
+# Create trakrf-ingester MQTT secret from .env.local (idempotent).
+# Run against the active kube context BEFORE argocd-bootstrap — or any time
+# after, followed by `kubectl rollout restart deployment/trakrf-ingester -n trakrf`.
+ingester-secrets:
+    @kubectl create namespace trakrf --dry-run=client -o yaml | kubectl apply -f -
+    @test -n "${MQTT_URL:-}" || { echo "ERROR: MQTT_URL not set in .env.local"; exit 1; }
+    @kubectl create secret generic trakrf-mqtt-credentials -n trakrf \
+      --from-literal=MQTT_URL="${MQTT_URL}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    @echo "MQTT secret applied (or unchanged). Ingester will pick it up on next rollout."
+
 # Install ArgoCD via Helm + install trakrf-root app-of-apps for the given cluster
 argocd-bootstrap CLUSTER:
     @echo "Adding ArgoCD Helm repo..."
