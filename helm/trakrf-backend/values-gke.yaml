@@ -1,11 +1,11 @@
 # GKE overrides for trakrf-backend.
-# Pinned to the trakrf/platform main commit sha-a99b5b8 (same tag as AKS).
+# Pinned to the trakrf/platform main commit sha-4afd0bc (TRA-468 merge).
 # PR #190 switched CI to an ARM-native runner and dropped amd64 from main-
 # branch builds — the image is linux/arm64-native, which matches GKE's
 # t2a-standard-4 (ARM Ampere) primary node.
 
 image:
-  tag: sha-a99b5b8
+  tag: sha-4afd0bc
 
 ingress:
   host: gke.trakrf.app
