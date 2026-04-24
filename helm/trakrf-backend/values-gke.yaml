@@ -7,6 +7,13 @@
 image:
   tag: sha-948e740
 
+# Non-production APP_ENV unlocks the test-only routes (e.g.
+# /test/invitations/:id/token) that org-invite e2e specs rely on, and
+# matches what Railway preview already does. gke is a confidence-
+# building / free-fire test env — no real customer traffic here.
+config:
+  appEnv: preview
+
 ingress:
   host: gke.trakrf.app
 
