@@ -28,6 +28,15 @@ spec:
         providers:
           kubernetesCRD:
             allowCrossNamespace: true
+        # Chart-native Prometheus scrape: enable the dedicated ClusterIP
+        # metrics Service + ServiceMonitor. kube-prometheus-stack discovers
+        # the SM via wide-open selectors in helm/monitoring/values.yaml.
+        metrics:
+          prometheus:
+            service:
+              enabled: true
+            serviceMonitor:
+              enabled: true
         {{- if eq .Values.cluster "aks" }}
         service:
           spec:
