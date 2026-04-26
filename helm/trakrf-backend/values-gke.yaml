@@ -1,11 +1,11 @@
 # GKE overrides for trakrf-backend.
-# Pinned to the trakrf/platform main commit sha-20db38f (TRA-491 merge).
+# Pinned to the trakrf/platform main commit sha-0a091de (TRA-500 merge).
 # PR #190 switched CI to an ARM-native runner and dropped amd64 from main-
 # branch builds — the image is linux/arm64-native, which matches GKE's
 # t2a-standard-4 (ARM Ampere) primary node.
 
 image:
-  tag: sha-20db38f
+  tag: sha-0a091de
 
 # Non-production APP_ENV unlocks the test-only routes (e.g.
 # /test/invitations/:id/token) that org-invite e2e specs rely on, and
