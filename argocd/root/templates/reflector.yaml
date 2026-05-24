@@ -19,8 +19,15 @@ spec:
     targetRevision: "10.0.45"
     helm:
       values: |
-        # No customization needed — the operator reads annotations
-        # off the source Secrets and reflects accordingly.
+        {{- if eq .Values.cluster "gke" }}
+        # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule on T2A pools.
+        # See memory feedback_gke_arm_auto_taint and TRA-470.
+        tolerations:
+          - key: kubernetes.io/arch
+            operator: Equal
+            value: arm64
+            effect: NoSchedule
+        {{- end }}
   destination:
     server: {{ .Values.destination.server }}
     namespace: reflector
