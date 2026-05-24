@@ -1,0 +1,33 @@
+# emberstack/reflector — mirrors annotated Secrets across namespaces.
+# Used to copy CNPG-managed role credential Secrets from trakrf-system
+# into trakrf-preview / trakrf-prod so app pods can mount them.
+# Cluster-scoped operator, installed in its own namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reflector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://emberstack.github.io/helm-charts
+    chart: reflector
+    targetRevision: "10.0.45"
+    helm:
+      values: |
+        # No customization needed — the operator reads annotations
+        # off the source Secrets and reflects accordingly.
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: reflector
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
