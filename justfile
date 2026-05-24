@@ -89,20 +89,39 @@ cnpg-bootstrap CLUSTER:
     @echo "Waiting for operator to be ready..."
     @kubectl rollout status deployment/cnpg-cloudnative-pg -n cnpg-system --timeout=120s
 
-# Create trakrf namespace + CNPG role secrets from .env.local (idempotent)
+# Create per-env CNPG role secrets in trakrf-system with reflector annotations
+# so they mirror into trakrf-preview / trakrf-prod. Run BEFORE argocd-bootstrap.
+# Requires four passwords in .env.local:
+#   TRAKRF_APP_DB_PASSWORD_PREVIEW
+#   TRAKRF_APP_DB_PASSWORD_PROD
+#   TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW
+#   TRAKRF_MIGRATE_DB_PASSWORD_PROD
+# Generate with: openssl rand -hex 32  (avoid base64 — / and + break URL DSNs)
 db-secrets:
-    @kubectl create namespace trakrf --dry-run=client -o yaml | kubectl apply -f -
-    @test -n "${TRAKRF_APP_DB_PASSWORD:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD not set in .env.local"; exit 1; }
-    @test -n "${TRAKRF_MIGRATE_DB_PASSWORD:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD not set in .env.local"; exit 1; }
-    @kubectl create secret generic trakrf-app-credentials -n trakrf \
-      --from-literal=username=trakrf-app \
-      --from-literal=password="${TRAKRF_APP_DB_PASSWORD}" \
-      --dry-run=client -o yaml | kubectl apply -f -
-    @kubectl create secret generic trakrf-migrate-credentials -n trakrf \
-      --from-literal=username=trakrf-migrate \
-      --from-literal=password="${TRAKRF_MIGRATE_DB_PASSWORD}" \
-      --dry-run=client -o yaml | kubectl apply -f -
-    @echo "Secrets applied (or unchanged)."
+    @kubectl create namespace trakrf-system --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl create namespace trakrf-preview --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl create namespace trakrf-prod --dry-run=client -o yaml | kubectl apply -f -
+    @test -n "${TRAKRF_APP_DB_PASSWORD_PREVIEW:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD_PREVIEW not set in .env.local"; exit 1; }
+    @test -n "${TRAKRF_APP_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
+    @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW not set in .env.local"; exit 1; }
+    @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
+    @for env in preview prod; do \
+      for role in app migrate; do \
+        upper_env=$$(echo $$env | tr '[:lower:]' '[:upper:]'); \
+        upper_role=$$(echo $$role | tr '[:lower:]' '[:upper:]'); \
+        pw_var="TRAKRF_$${upper_role}_DB_PASSWORD_$${upper_env}"; \
+        pw=$$(eval "echo \$$$$pw_var"); \
+        kubectl create secret generic trakrf-$${role}-$${env}-credentials -n trakrf-system \
+          --from-literal=username=trakrf-$${role}-$${env} \
+          --from-literal=password="$$pw" \
+          --dry-run=client -o yaml | kubectl apply -f -; \
+        kubectl annotate --overwrite secret trakrf-$${role}-$${env}-credentials -n trakrf-system \
+          reflector.v1.k8s.emberstack.com/reflection-allowed=true \
+          reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
+          reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-$${env}; \
+      done; \
+    done
+    @echo "Secrets applied + reflector annotations set. Reflector will mirror into trakrf-{preview,prod}."
 
 # Create trakrf-ingester MQTT secret from .env.local (idempotent).
 # Run against the active kube context BEFORE argocd-bootstrap — or any time
