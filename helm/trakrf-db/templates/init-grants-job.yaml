@@ -1,0 +1,83 @@
+{{- /*
+  Per-env init Job — applies schema + grants in each Postgres database.
+  Runs as a Helm post-install,post-upgrade hook so it lands after the
+  CNPG operator has created the managed roles and the Database CRDs
+  have reconciled. SQL is idempotent so a re-run on every chart
+  upgrade is a no-op when grants are already in place.
+
+  The Job connects to trakrf-db-rw as the env's migrate role, reading
+  the password from the same Secret CNPG manages for that role.
+*/ -}}
+{{- range $env := .Values.envs }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "trakrf-db-init-grants-%s" $env.name }}
+  namespace: {{ $.Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      name: {{ printf "trakrf-db-init-grants-%s" $env.name }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with $.Values.affinity.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: psql
+          image: {{ $.Values.initGrantsJob.image | quote }}
+          env:
+            - name: PGHOST
+              value: {{ $.Values.initGrantsJob.host | quote }}
+            - name: PGPORT
+              value: "5432"
+            - name: PGSSLMODE
+              value: require
+            - name: PGDATABASE
+              value: {{ $env.database | quote }}
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $env.migrateSecret | quote }}
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $env.migrateSecret | quote }}
+                  key: password
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              # Wait for managed-role password reconcile (CNPG runs async after
+              # Cluster admission). Retry psql until auth succeeds.
+              for i in $(seq 1 30); do
+                if psql -v ON_ERROR_STOP=1 -c '\q' 2>/dev/null; then
+                  break
+                fi
+                echo "waiting for role password reconcile (attempt $i)..."
+                sleep 4
+              done
+              psql -v ON_ERROR_STOP=1 <<'SQL'
+              CREATE SCHEMA IF NOT EXISTS trakrf AUTHORIZATION "{{ $env.migrateRole }}";
+              GRANT CONNECT ON DATABASE {{ $env.database }} TO "{{ $env.appRole }}";
+              GRANT USAGE ON SCHEMA trakrf TO "{{ $env.appRole }}";
+              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
+                GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{{ $env.appRole }}";
+              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
+                GRANT USAGE, SELECT ON SEQUENCES TO "{{ $env.appRole }}";
+              ALTER ROLE "{{ $env.appRole }}" SET app.current_org_id = '0';
+              SQL
+{{- end }}
