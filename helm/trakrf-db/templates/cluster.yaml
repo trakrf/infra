@@ -21,18 +21,24 @@ spec:
     initdb:
       database: {{ .Values.bootstrap.initdb.database }}
       owner: {{ .Values.bootstrap.initdb.owner | quote }}
+      {{- with .Values.bootstrap.initdb.postInitTemplateSQL }}
       postInitTemplateSQL:
-        {{- range .Values.bootstrap.initdb.postInitTemplateSQL }}
+        {{- range . }}
         - {{ . | quote }}
         {{- end }}
+      {{- end }}
+      {{- with .Values.bootstrap.initdb.postInitSQL }}
       postInitSQL:
-        {{- range .Values.bootstrap.initdb.postInitSQL }}
+        {{- range . }}
         - {{ . | quote }}
         {{- end }}
+      {{- end }}
+      {{- with .Values.bootstrap.initdb.postInitApplicationSQL }}
       postInitApplicationSQL:
-        {{- range .Values.bootstrap.initdb.postInitApplicationSQL }}
+        {{- range . }}
         - {{ . | quote }}
         {{- end }}
+      {{- end }}
 
   managed:
     roles:
