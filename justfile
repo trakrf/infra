@@ -105,23 +105,23 @@ db-secrets:
     @test -n "${TRAKRF_APP_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
-    @for env in preview prod; do \
-      for role in app migrate; do \
-        upper_env=$$(echo $$env | tr '[:lower:]' '[:upper:]'); \
-        upper_role=$$(echo $$role | tr '[:lower:]' '[:upper:]'); \
-        pw_var="TRAKRF_$${upper_role}_DB_PASSWORD_$${upper_env}"; \
-        pw=$$(eval "echo \$$$$pw_var"); \
-        kubectl create secret generic trakrf-$${role}-$${env}-credentials -n trakrf-system \
-          --from-literal=username=trakrf-$${role}-$${env} \
-          --from-literal=password="$$pw" \
-          --dry-run=client -o yaml | kubectl apply -f -; \
-        kubectl annotate --overwrite secret trakrf-$${role}-$${env}-credentials -n trakrf-system \
-          reflector.v1.k8s.emberstack.com/reflection-allowed=true \
-          reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
-          reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-$${env}; \
-      done; \
-    done
+    @just _db-secret app     preview "${TRAKRF_APP_DB_PASSWORD_PREVIEW}"
+    @just _db-secret app     prod    "${TRAKRF_APP_DB_PASSWORD_PROD}"
+    @just _db-secret migrate preview "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW}"
+    @just _db-secret migrate prod    "${TRAKRF_MIGRATE_DB_PASSWORD_PROD}"
     @echo "Secrets applied + reflector annotations set. Reflector will mirror into trakrf-{preview,prod}."
+
+# Helper: create one reflector-annotated CNPG role Secret in trakrf-system.
+# Private (leading underscore) — called by db-secrets.
+_db-secret ROLE ENV PW:
+    @kubectl create secret generic trakrf-{{ROLE}}-{{ENV}}-credentials -n trakrf-system \
+      --from-literal=username=trakrf-{{ROLE}}-{{ENV}} \
+      --from-literal=password="{{PW}}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl annotate --overwrite secret trakrf-{{ROLE}}-{{ENV}}-credentials -n trakrf-system \
+      reflector.v1.k8s.emberstack.com/reflection-allowed=true \
+      reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
+      reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-{{ENV}}
 
 # Create trakrf-ingester MQTT secret from .env.local (idempotent).
 # Run against the active kube context BEFORE argocd-bootstrap — or any time
