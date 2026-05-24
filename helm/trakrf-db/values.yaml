@@ -1,5 +1,5 @@
 # Common CNPG+Timescale defaults. Storage class + affinity per cluster overlay.
-# Managed role secrets (trakrf-app-credentials, trakrf-migrate-credentials) are
+# Managed role passwordSecrets (4 of them, one per env-role pair) are
 # created out-of-band by `just db-secrets` — do not template them here.
 
 fullnameOverride: trakrf-db
@@ -15,45 +15,49 @@ postgresql:
     timescaledb.license: timescale
     password_encryption: scram-sha-256
 
+# `initdb` bootstraps a single Postgres database. We use trakrf_preview as
+# the initial DB so its owner role (trakrf-migrate-preview) is also created
+# by initdb. The trakrf_prod database is created later by a Database CRD
+# (templates/databases.yaml) and its roles by `managed.roles` below.
 bootstrap:
   initdb:
-    database: trakrf
-    owner: trakrf-migrate
+    database: trakrf_preview
+    owner: trakrf-migrate-preview
     postInitTemplateSQL:
       - CREATE EXTENSION IF NOT EXISTS timescaledb
-    postInitSQL:
-      - CREATE ROLE "trakrf-app" LOGIN
-    postInitApplicationSQL:
-      - CREATE SCHEMA trakrf AUTHORIZATION "trakrf-migrate"
-      - GRANT CONNECT ON DATABASE trakrf TO "trakrf-app"
-      - GRANT USAGE ON SCHEMA trakrf TO "trakrf-app"
-      - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "trakrf-app"
-      - ALTER DEFAULT PRIVILEGES FOR ROLE "trakrf-migrate" IN SCHEMA trakrf GRANT USAGE, SELECT ON SEQUENCES TO "trakrf-app"
-      # RLS policies on trakrf.* tables read current_setting('app.current_org_id')
-      # without missing_ok=true, so any query against those tables from a session
-      # that never did SET LOCAL app.current_org_id = ... errors with SQLSTATE 42704
-      # (unrecognized configuration parameter). The backend's WithOrgTx wrapper
-      # sets this per-request, but a few call sites (e.g. BatchLookupTags) query
-      # the pool directly. Set a sentinel default of '0' (no real org has that id,
-      # so RLS still returns 0 rows — no cross-org leakage) so those call sites
-      # fail soft (empty result) rather than 500.
-      - ALTER ROLE "trakrf-app" SET app.current_org_id = '0'
+    postInitSQL: []
+    # All schema/grants are applied by per-env post-install Jobs
+    # (templates/init-grants-job.yaml) so the bootstrap path and the
+    # second-DB path use one source of truth.
+    postInitApplicationSQL: []
 
-managedRoles:
-  - name: trakrf-app
-    ensure: present
-    login: true
-    superuser: false
-    createdb: false
-    createrole: false
-    passwordSecretName: trakrf-app-credentials
-  - name: trakrf-migrate
-    ensure: present
-    login: true
-    superuser: false
-    createdb: true
-    createrole: false
-    passwordSecretName: trakrf-migrate-credentials
+# Each entry defines one Postgres database and its role pair.
+# Database CRD (templates/databases.yaml) and managed-role list
+# (templates/cluster.yaml) both range over this.
+envs:
+  - name: preview
+    database: trakrf_preview          # Postgres DB name (underscore)
+    cnpgDatabaseName: trakrf-preview  # K8s Database CRD metadata.name (hyphen)
+    appRole: trakrf-app-preview
+    migrateRole: trakrf-migrate-preview
+    appSecret: trakrf-app-preview-credentials
+    migrateSecret: trakrf-migrate-preview-credentials
+    reflectTo: trakrf-preview
+  - name: prod
+    database: trakrf_prod
+    cnpgDatabaseName: trakrf-prod
+    appRole: trakrf-app-prod
+    migrateRole: trakrf-migrate-prod
+    appSecret: trakrf-app-prod-credentials
+    migrateSecret: trakrf-migrate-prod-credentials
+    reflectTo: trakrf-prod
+
+# Init-grants Job knobs (one Job per env via templates/init-grants-job.yaml)
+initGrantsJob:
+  # CNPG ships psql in its postgresql image
+  image: ghcr.io/cloudnative-pg/postgresql:17.2
+  # The DB host the Job connects to — CNPG service in the chart's namespace
+  host: trakrf-db-rw
 
 storage:
   size: 10Gi
