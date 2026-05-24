@@ -78,6 +78,10 @@ spec:
                 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{{ $env.appRole }}";
               ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
                 GRANT USAGE, SELECT ON SEQUENCES TO "{{ $env.appRole }}";
-              ALTER ROLE "{{ $env.appRole }}" SET app.current_org_id = '0';
+              -- ALTER DATABASE rather than ALTER ROLE: the migrate role is the DB
+              -- owner but lacks ADMIN OPTION on the app role, so it can't ALTER
+              -- ROLE on it. Same end-effect since the app role only connects to
+              -- its own database.
+              ALTER DATABASE {{ $env.database }} SET app.current_org_id = '0';
               SQL
 {{- end }}
