@@ -94,8 +94,12 @@ broker:
   exporter:
     enabled: true
     image:
-      repository: sapcc/mosquitto-exporter
-      tag: "0.8.0"
+      # jryberg/mosquitto-exporter is a drop-in fork of sapcc/mosquitto-exporter
+      # with a multi-arch build (sapcc upstream is amd64-only, which crashes on
+      # GKE T2A ARM nodes with "exec format error"). Same env var contract:
+      # BROKER_ENDPOINT, MQTT_USER, MQTT_PASS, BIND_ADDRESS.
+      repository: jryberg/mosquitto-exporter
+      tag: "v0.7.7"
       pullPolicy: IfNotPresent
     port: 9234
     resources:
