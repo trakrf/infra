@@ -33,3 +33,10 @@ certManagerGcpServiceAccountEmail: ""
 cloudDnsZoneNameApp: ""
 cloudDnsZoneNameId: ""
 # Note: traefikLbIp (above) is shared — both AKS and GKE use it for their static LB IPs.
+
+# TRA-828 — per-env MQTT broker LB IPs (Tofu-injected by scripts/apply-root-app.sh).
+# Blank on non-GKE clusters; consumed by argocd/root/templates/trakrf-ingester.yaml
+# to set per-env broker.loadBalancerIP. Hostname is computed per-env from a
+# fixed `mqtt.{env}.gke.trakrf.id` template (no per-env placeholder needed).
+mqttPreviewIp: ""
+mqttProdIp: ""
