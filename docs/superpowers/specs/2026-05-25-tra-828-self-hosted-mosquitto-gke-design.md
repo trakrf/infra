@@ -35,7 +35,7 @@ Foreclosed alternatives:
 - Grafana dashboard for broker metrics. Metrics will be live in Prometheus immediately via the `mosquitto-exporter` sidecar; dashboard follows in a separate ticket.
 - Web hosts migration to `.id` (`app.gke.trakrf.app`, `docs.*` stay on `.app` for now). The `gke.trakrf.app` zone and its wildcard cert are left in place; retirement is a follow-up.
 - EMQX Cloud decommission. Worth doing eventually as housekeeping (the dormant deployment is still internet-reachable with creds that have appeared in logs), but $0/mo idle, no urgency, no soak gate. Follow-up ticket.
-- Pre-cutover verification of the CS463 broker→DB write path beyond a quick `identifier_scans` query. If recent rows are absent, this ticket also doubles as a repair; flag in the PR description, don't block.
+- Pre-cutover verification of the CS463 broker→DB write path beyond a quick `tag_scans` query. If recent rows are absent, this ticket also doubles as a repair; flag in the PR description, don't block.
 - Explicit broker pinning to on-demand pool. GKE default pool is on-demand today; revisit when TRA-544's spot pool actually lands.
 
 ## DNS + cert architecture
@@ -245,24 +245,24 @@ This is load-bearing. The first DNS-01 challenge fails if the zone isn't publicl
    ```
    mosquitto_pub -h mqtt.preview.gke.trakrf.id -p 8883 --capath /etc/ssl/certs \
      -u "$MOSQUITTO_USER" -P "$MOSQUITTO_PASSWORD" \
-     -t trakrf/scans/smoke -m '{"ping":1}'
+     -t trakrf.id/smoke/reads -m '{"ping":1}'
    ```
-   Confirm row in `trakrf_preview.trakrf.identifier_scans`. Repeat for prod.
+   Confirm row in `trakrf_preview.trakrf.tag_scans`. Repeat for prod.
 
 ## Device cutover
 
 Pre-cutover check (per spec's own caveat — the CS463 → DB write path may have been silently dark):
 ```
 kubectl exec -n trakrf-system trakrf-db-1 -- psql -U postgres -d trakrf_preview \
-  -c "SELECT message_topic, created_at FROM trakrf.identifier_scans
+  -c "SELECT message_topic, created_at FROM trakrf.tag_scans
       WHERE message_topic LIKE '%cs463-21%'
       ORDER BY created_at DESC LIMIT 10;"
 ```
 Empty or stale rows → this ticket also doubles as a repair. Flag in the PR description; don't block.
 
 Sequence:
-1. Repoint devices to **preview broker first** (home-lab 2× CS463 + 1× GL-S10). Confirm rows land in `trakrf_preview.trakrf.identifier_scans`. Soak ~24h.
-2. Once preview is clean, repoint a subset (or all, given home-lab scale) to prod broker. Confirm rows in `trakrf_prod.trakrf.identifier_scans`.
+1. Repoint devices to **preview broker first** (home-lab 2× CS463 + 1× GL-S10). Confirm rows land in `trakrf_preview.trakrf.tag_scans`. Soak ~24h.
+2. Once preview is clean, repoint a subset (or all, given home-lab scale) to prod broker. Confirm rows in `trakrf_prod.trakrf.tag_scans`.
 3. EMQX Cloud teardown is housekeeping — separate follow-up ticket.
 
 ## Rollback
