@@ -47,6 +47,10 @@ spec:
         service:
           spec:
             loadBalancerIP: {{ .Values.traefikLbIp | quote }}
+            # Preserve client source IP so the Traefik IPAllowList middleware
+            # sees real client IPs instead of kube-proxy node IPs. Default
+            # `Cluster` masquerades, which breaks any IP-based access control.
+            externalTrafficPolicy: Local
         # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM pools;
         # AKS Ubuntu does not. See TRA-470. Traefik v3 values put `tolerations`
         # at the top level, not under `deployment.`.
