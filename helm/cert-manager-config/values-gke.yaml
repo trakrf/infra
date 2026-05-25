@@ -14,6 +14,15 @@ solver: cloudDNS
 http01Solver:
   enabled: true
   ingressClassName: traefik
+  # Solver pod needs the ARM toleration to schedule on GKE's auto-tainted
+  # ARM node pool. cert-manager doesn't add this automatically.
+  podTemplate:
+    spec:
+      tolerations:
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: arm64
+          effect: NoSchedule
 
 cloudDNS:
   # Injected at install time — GCP project ID.
