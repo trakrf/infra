@@ -1,6 +1,10 @@
-# EKS overlay — distinct MQTT clientId so EKS doesn't collide with Railway
-# prod or other cluster ingesters on the shared EMQX Cloud broker. See
-# values-gke.yaml for rationale. (EKS is currently burned down per TRA-381;
-# this override applies when the stack is rebuilt.)
+# EKS overlay — currently burned down (TRA-381); broker fan-out lives in the
+# EKS-parity ticket (TRA-832). Until then: broker disabled, ingester scaled
+# to 0. See values-aks.yaml for the same rationale.
+replicaCount: 0
+
 mqtt:
   clientId: trakrf-ingester-eks
+
+broker:
+  enabled: false

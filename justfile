@@ -123,16 +123,42 @@ _db-secret ROLE ENV PW:
       reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
       reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-{{ENV}}
 
-# Create trakrf-ingester MQTT secret from .env.local (idempotent).
-# Run against the active kube context BEFORE argocd-bootstrap — or any time
-# after, followed by `kubectl rollout restart deployment/trakrf-ingester -n trakrf`.
-ingester-secrets:
-    @kubectl create namespace trakrf --dry-run=client -o yaml | kubectl apply -f -
-    @test -n "${MQTT_URL:-}" || { echo "ERROR: MQTT_URL not set in .env.local"; exit 1; }
-    @kubectl create secret generic trakrf-mqtt-credentials -n trakrf \
-      --from-literal=MQTT_URL="${MQTT_URL}" \
-      --dry-run=client -o yaml | kubectl apply -f -
-    @echo "MQTT secret applied (or unchanged). Ingester will pick it up on next rollout."
+# Create the Mosquitto broker auth Secret in trakrf-system with reflector
+# annotations so it mirrors into trakrf-preview / trakrf-prod. Run BEFORE the
+# trakrf-ingester pods come up — they mount this Secret for the loopback
+# password_file + the ingester/exporter env credentials.
+#
+# Requires in .env.local:
+#   MOSQUITTO_USER       e.g. trakrf-ingester
+#   MOSQUITTO_PASSWORD   generate with `openssl rand -hex 32`
+#                        (base64 has /+ which breaks URL-composed DSNs;
+#                        see feedback_db_password_alphabet)
+#
+# Idempotent. Re-running rotates the Secret; Stakater Reloader bounces both
+# env pods automatically (the trakrf-ingester Deployment carries the
+# `reloader.stakater.com/auto: "true"` annotation).
+mosquitto-secrets:
+    @kubectl create namespace trakrf-system --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl create namespace trakrf-preview --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl create namespace trakrf-prod --dry-run=client -o yaml | kubectl apply -f -
+    @test -n "${MOSQUITTO_USER:-}" || { echo "ERROR: MOSQUITTO_USER not set in .env.local"; exit 1; }
+    @test -n "${MOSQUITTO_PASSWORD:-}" || { echo "ERROR: MOSQUITTO_PASSWORD not set in .env.local"; exit 1; }
+    @# Use a throwaway eclipse-mosquitto container so we don't depend on a host
+    @# mosquitto_passwd binary. Writes the hashed password_file to stdout, then
+    @# folds it into a Secret alongside literal username/password for ingester
+    @# + exporter env wiring.
+    @PASSWD_FILE=$(docker run --rm eclipse-mosquitto:2.0.21 sh -c \
+      "mosquitto_passwd -b -c /tmp/passwd '${MOSQUITTO_USER}' '${MOSQUITTO_PASSWORD}' >/dev/null && cat /tmp/passwd") && \
+     kubectl create secret generic trakrf-mosquitto-auth -n trakrf-system \
+       --from-literal=passwd="$PASSWD_FILE" \
+       --from-literal=username="${MOSQUITTO_USER}" \
+       --from-literal=password="${MOSQUITTO_PASSWORD}" \
+       --dry-run=client -o yaml | kubectl apply -f -
+    @kubectl annotate --overwrite secret trakrf-mosquitto-auth -n trakrf-system \
+      reflector.v1.k8s.emberstack.com/reflection-allowed=true \
+      reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
+      reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-preview,trakrf-prod
+    @echo "Mosquitto auth Secret applied. Reflector mirrors to trakrf-{preview,prod}."
 
 # Install ArgoCD via Helm + install trakrf-root app-of-apps for the given cluster
 argocd-bootstrap CLUSTER:

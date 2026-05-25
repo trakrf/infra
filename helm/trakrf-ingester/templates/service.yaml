@@ -15,4 +15,10 @@ spec:
       port: {{ .Values.metrics.port }}
       targetPort: metrics
       protocol: TCP
+    {{- if and .Values.broker.enabled .Values.broker.exporter.enabled }}
+    - name: mqtt-metrics
+      port: {{ .Values.broker.exporter.port }}
+      targetPort: mqtt-metrics
+      protocol: TCP
+    {{- end }}
 {{- end }}

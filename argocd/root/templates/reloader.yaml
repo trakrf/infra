@@ -1,0 +1,48 @@
+# Stakater Reloader — bounces Deployments/StatefulSets when watched
+# ConfigMaps/Secrets change. Opt-in via the `reloader.stakater.com/auto: "true"`
+# pod-template annotation on the workload.
+#
+# Used for cert-manager Secret rotation (every ~60d) on the Mosquitto broker
+# cert, and for broker auth Secret rotations. Mosquitto doesn't reliably pick
+# up a new cert on SIGHUP, so a pod restart is the simple, durable fix.
+#
+# Distinct from emberstack/reflector (already installed) — Reflector copies
+# Secrets across namespaces; Reloader restarts pods. Both live at sync wave -1.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reloader
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://stakater.github.io/stakater-charts
+    chart: reloader
+    targetRevision: "v1.4.7"
+    helm:
+      values: |
+        reloader:
+          {{- if eq .Values.cluster "gke" }}
+          # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule on T2A pools.
+          # See memory feedback_gke_arm_auto_taint and TRA-470.
+          deployment:
+            tolerations:
+              - key: kubernetes.io/arch
+                operator: Equal
+                value: arm64
+                effect: NoSchedule
+          {{- end }}
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: reloader
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

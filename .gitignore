@@ -3,6 +3,7 @@
 .worktrees/
 .env
 .env.*
+!.env.local.sample
 kubeconfig.yml
 .idea
 .DS_Store

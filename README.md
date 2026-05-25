@@ -115,7 +115,7 @@ just gke-creds              # or: just aks-creds
 # 5. Install the CNPG operator + create namespace and DB role secrets
 just cnpg-bootstrap gke
 just db-secrets
-just ingester-secrets
+just mosquitto-secrets
 
 # 6. Install ArgoCD and the trakrf-root app-of-apps for this cluster
 just argocd-bootstrap gke
@@ -128,7 +128,7 @@ just grafana-password
 just grafana-ui             # port-forward to :3000
 ```
 
-ArgoCD will sync `cert-manager`, `traefik`, the CNPG `Cluster`, `trakrf-backend`, and `trakrf-ingester` automatically. The `db-secrets` and `ingester-secrets` recipes create the role/MQTT credentials that have to exist before the workloads come up — see [`helm/README.md`](helm/README.md).
+ArgoCD will sync `cert-manager`, `traefik`, the CNPG `Cluster`, `trakrf-backend`, and `trakrf-ingester` automatically. The `db-secrets` and `mosquitto-secrets` recipes create the role/MQTT credentials that have to exist before the workloads come up — see [`helm/README.md`](helm/README.md).
 
 > **Note on root chart edits.** Changes under `argocd/root/templates/*` don't auto-sync — they require re-running `scripts/apply-root-app.sh <cluster>` to bump the root chart and re-template the tofu outputs.
 

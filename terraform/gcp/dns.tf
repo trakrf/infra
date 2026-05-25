@@ -75,3 +75,21 @@ resource "google_dns_record_set" "gke_id_wildcard" {
   ttl          = 300
   rrdatas      = [google_compute_address.traefik.address]
 }
+
+# TRA-828 — Per-env broker A records on dedicated static IPs (not the wildcard,
+# which points at Traefik). DNS for the device-facing Mosquitto LoadBalancers.
+resource "google_dns_record_set" "mqtt_preview" {
+  managed_zone = google_dns_managed_zone.gke_trakrf_id.name
+  name         = "mqtt.preview.${google_dns_managed_zone.gke_trakrf_id.dns_name}"
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.mqtt_preview.address]
+}
+
+resource "google_dns_record_set" "mqtt_prod" {
+  managed_zone = google_dns_managed_zone.gke_trakrf_id.name
+  name         = "mqtt.prod.${google_dns_managed_zone.gke_trakrf_id.dns_name}"
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.mqtt_prod.address]
+}

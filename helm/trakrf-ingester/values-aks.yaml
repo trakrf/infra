@@ -1,5 +1,11 @@
-# AKS overlay — distinct MQTT clientId so AKS doesn't collide with Railway
-# prod or other cluster ingesters on the shared EMQX Cloud broker. See
-# values-gke.yaml for rationale.
+# AKS overlay — broker fan-out lives in the AKS-parity ticket (TRA-833) and
+# isn't wired yet. Until then: broker disabled, ingester scaled to 0 so the
+# rendered Deployment exists but no pod tries to connect to a non-existent
+# broker. The trakrf-mqtt-credentials Secret is retired (TRA-828).
+replicaCount: 0
+
 mqtt:
   clientId: trakrf-ingester-aks
+
+broker:
+  enabled: false
