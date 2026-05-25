@@ -1,23 +1,39 @@
 # GKE uses the Cloud DNS solver via GKE Workload Identity.
-# Real values for cloudDNS.project + cloudDNS.hostedZoneName come from
+# Real values for cloudDNS.project + cloudDNS.zones[*].hostedZoneName come from
 # scripts/apply-root-app.sh (tofu outputs) injected into the root-app
-# Application's inline helm.values at install time. The placeholders
-# below are docs only.
+# Application's inline helm.values at install time. The placeholders below
+# are docs only.
 
 solver: cloudDNS
 
 cloudDNS:
   # Injected at install time — GCP project ID.
   project: REPLACE_ME
-  # Injected at install time — Cloud DNS MANAGED ZONE RESOURCE NAME
-  # (e.g. gke-trakrf-app), not the DNS name.
-  hostedZoneName: REPLACE_ME
-  # Static — the DNS name cert-manager matches against in the selector.
-  dnsZoneName: gke.trakrf.app
+  # Injected at install time — one entry per zone. hostedZoneName is the Cloud
+  # DNS managed-zone RESOURCE NAME (e.g. "gke-trakrf-app"), not the DNS name.
+  # dnsZoneName is the DNS name used in the ClusterIssuer solver selector.
+  zones:
+    - hostedZoneName: REPLACE_ME_APP
+      dnsZoneName: gke.trakrf.app
+    - hostedZoneName: REPLACE_ME_ID
+      dnsZoneName: gke.trakrf.id
 
-certificate:
-  name: trakrf-gke-wildcard
-  commonName: gke.trakrf.app
-  dnsNames:
-    - gke.trakrf.app
-    - "*.gke.trakrf.app"
+certificates:
+  # Name kept as-is to avoid a destructive rename (cert-manager doesn't follow
+  # renames — it deletes and re-issues, leaving a momentary Secret gap).
+  # Asymmetric vs the new .id entry, but the cost of renaming outweighs the
+  # cosmetic symmetry.
+  - name: trakrf-gke-wildcard
+    namespace: cert-manager
+    secretName: trakrf-gke-wildcard-tls
+    commonName: gke.trakrf.app
+    dnsNames:
+      - gke.trakrf.app
+      - "*.gke.trakrf.app"
+  - name: trakrf-gke-id-wildcard
+    namespace: cert-manager
+    secretName: trakrf-gke-id-wildcard-tls
+    commonName: gke.trakrf.id
+    dnsNames:
+      - gke.trakrf.id
+      - "*.gke.trakrf.id"

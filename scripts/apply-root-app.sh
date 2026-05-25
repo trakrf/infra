@@ -33,7 +33,8 @@ case "$CLUSTER" in
     LB_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
     GCP_PROJECT_ID=""
     GCP_CM_SA_EMAIL=""
-    GCP_DNS_ZONE_NAME=""
+    GCP_DNS_ZONE_NAME_APP=""
+    GCP_DNS_ZONE_NAME_ID=""
     ;;
   gke)
     TF_DIR="terraform/gcp"
@@ -46,7 +47,8 @@ case "$CLUSTER" in
     # GCP-specific outputs.
     GCP_PROJECT_ID=$(tofu -chdir="$TF_DIR" output -raw project_id)
     GCP_CM_SA_EMAIL=$(tofu -chdir="$TF_DIR" output -raw cert_manager_service_account_email)
-    GCP_DNS_ZONE_NAME=$(tofu -chdir="$TF_DIR" output -raw cloud_dns_zone_name)
+    GCP_DNS_ZONE_NAME_APP=$(tofu -chdir="$TF_DIR" output -raw cloud_dns_zone_name)
+    GCP_DNS_ZONE_NAME_ID=$(tofu  -chdir="$TF_DIR" output -raw cloud_dns_zone_name_id)
     LB_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
     ;;
   eks)
@@ -58,7 +60,8 @@ case "$CLUSTER" in
     MAIN_RG=""
     GCP_PROJECT_ID=""
     GCP_CM_SA_EMAIL=""
-    GCP_DNS_ZONE_NAME=""
+    GCP_DNS_ZONE_NAME_APP=""
+    GCP_DNS_ZONE_NAME_ID=""
     ;;
   *)
     echo "warning: no tofu output wiring for cluster '$CLUSTER'; passing blank values" >&2
@@ -70,7 +73,8 @@ case "$CLUSTER" in
     MAIN_RG=""
     GCP_PROJECT_ID=""
     GCP_CM_SA_EMAIL=""
-    GCP_DNS_ZONE_NAME=""
+    GCP_DNS_ZONE_NAME_APP=""
+    GCP_DNS_ZONE_NAME_ID=""
     ;;
 esac
 
@@ -94,7 +98,8 @@ helm upgrade --install trakrf-root argocd/root \
   --set mainResourceGroupName="$MAIN_RG" \
   --set gcpProjectId="$GCP_PROJECT_ID" \
   --set certManagerGcpServiceAccountEmail="$GCP_CM_SA_EMAIL" \
-  --set cloudDnsZoneName="$GCP_DNS_ZONE_NAME" \
+  --set cloudDnsZoneNameApp="$GCP_DNS_ZONE_NAME_APP" \
+  --set cloudDnsZoneNameId="$GCP_DNS_ZONE_NAME_ID" \
   "${EXTRA_ARGS[@]}"
 
 echo

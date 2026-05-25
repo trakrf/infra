@@ -34,3 +34,19 @@ resource "cloudflare_record" "gke_subdomain_ns" {
 
   comment = "Delegate gke.trakrf.app to GCP Cloud DNS"
 }
+
+# Create NS records in Cloudflare to delegate gke.trakrf.id to Cloud DNS.
+# Delegation lives on the trakrf.id zone (cloudflare_zone.domain), distinct
+# from the .app delegation above on cloudflare_zone.trakrf_app. Mirrors the
+# aws-delegation.tf pattern (also on .domain).
+resource "cloudflare_record" "gke_subdomain_ns_id" {
+  count = length(data.terraform_remote_state.gcp.outputs.dns_nameservers_id)
+
+  zone_id = cloudflare_zone.domain.id
+  name    = "gke"
+  type    = "NS"
+  content = data.terraform_remote_state.gcp.outputs.dns_nameservers_id[count.index]
+  ttl     = 3600
+
+  comment = "Delegate gke.trakrf.id to GCP Cloud DNS"
+}

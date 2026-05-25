@@ -25,3 +25,13 @@ resource "google_service_account_iam_member" "cert_manager_wi" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[cert-manager/cert-manager]"
 }
+
+# Second zone-scoped binding for the gke.trakrf.id zone (TRA-829). Same SA,
+# same role, distinct zone — keeps blast radius tight (no project-level grant).
+# The Workload Identity binding above is reused; one SA, two zone bindings.
+resource "google_dns_managed_zone_iam_member" "cert_manager_dns_admin_id" {
+  project      = var.project_id
+  managed_zone = google_dns_managed_zone.gke_trakrf_id.name
+  role         = "roles/dns.admin"
+  member       = "serviceAccount:${google_service_account.cert_manager.email}"
+}

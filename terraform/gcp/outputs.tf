@@ -68,3 +68,21 @@ output "traefik_lb_ip" {
   description = "Static IP reserved for Traefik's LoadBalancer Service — passed as spec.loadBalancerIP"
   value       = google_compute_address.traefik.address
 }
+
+# TRA-829 — gke.trakrf.id zone outputs (parallel to dns_zone_name / dns_nameservers /
+# cloud_dns_zone_name above for gke.trakrf.app).
+
+output "dns_zone_name_id" {
+  description = "Cloud DNS zone DNS name for gke.trakrf.id (trailing dot stripped)"
+  value       = trimsuffix(google_dns_managed_zone.gke_trakrf_id.dns_name, ".")
+}
+
+output "dns_nameservers_id" {
+  description = "Cloud DNS nameservers for gke.trakrf.id — consumed by Cloudflare for NS delegation"
+  value       = google_dns_managed_zone.gke_trakrf_id.name_servers
+}
+
+output "cloud_dns_zone_name_id" {
+  description = "Cloud DNS managed-zone resource name for gke.trakrf.id. Consumed by cert-manager cloudDNS solver."
+  value       = google_dns_managed_zone.gke_trakrf_id.name
+}
