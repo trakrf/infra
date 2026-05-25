@@ -150,7 +150,7 @@ mosquitto-secrets:
     @PASSWD_FILE=$(docker run --rm eclipse-mosquitto:2.0.21 sh -c \
       "mosquitto_passwd -b -c /tmp/passwd '${MOSQUITTO_USER}' '${MOSQUITTO_PASSWORD}' >/dev/null && cat /tmp/passwd") && \
      kubectl create secret generic trakrf-mosquitto-auth -n trakrf-system \
-       --from-literal=passwd="$$PASSWD_FILE" \
+       --from-literal=passwd="$PASSWD_FILE" \
        --from-literal=username="${MOSQUITTO_USER}" \
        --from-literal=password="${MOSQUITTO_PASSWORD}" \
        --dry-run=client -o yaml | kubectl apply -f -
