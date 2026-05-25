@@ -1,0 +1,38 @@
+{{- if .Values.broker.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trakrf-ingester.fullname" . }}-mosquitto
+  labels:
+    {{- include "trakrf-ingester.labels" . | nindent 4 }}
+data:
+  mosquitto.conf: |
+    # Per-listener auth (so the loopback plain listener can require auth too).
+    per_listener_settings true
+
+    # Loopback-only plain listener for the ingester + exporter sidecars.
+    # Authenticated; never reachable from outside the pod (bound to 127.0.0.1).
+    listener 1883 127.0.0.1
+    allow_anonymous false
+    password_file /mosquitto/auth/passwd
+
+    # Public TLS listener. cert-manager mounts the cert Secret at /mosquitto/tls.
+    # TLS 1.2 only — the GL-S10 BLE gateway's mbedTLS build is 1.2-only and a
+    # 1.3-floor would brick it. See TRA-827.
+    listener 8883 0.0.0.0
+    protocol mqtt
+    certfile /mosquitto/tls/tls.crt
+    keyfile  /mosquitto/tls/tls.key
+    tls_version tlsv1.2
+    allow_anonymous false
+    password_file /mosquitto/auth/passwd
+
+    # Stateless broker — current device traffic is QoS 0, so persistence is
+    # inert. Sidesteps the zonal-PD AZ-orphan trap (TRA-364). emptyDir is
+    # mounted at persistence_location to satisfy the directive even when off.
+    persistence false
+    persistence_location /mosquitto/data/
+
+    # Log to stdout so kubectl logs sees broker events.
+    log_dest stdout
+{{- end }}
