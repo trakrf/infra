@@ -88,15 +88,21 @@ ingress:
         - name: default-chain
           namespace: traefik
         - name: breakglass-allow
-    - name: cloudflare
+    # `app.preview.trakrf.id` runs grey-cloud (CF DNS-only) because CF Universal
+    # SSL (Free tier) can't issue an edge cert for two-label hosts under
+    # trakrf.id. Per-host LE cert via HTTP-01 at origin; same breakglass
+    # IPAllowList as the gke-direct route. The Origin Cert + cloudflare-allow
+    # middleware live on for future use when prod cutover lands ACM/Total TLS.
+    - name: trakrf-id-direct
       host: app.preview.trakrf.id
-      secretName: trakrf-id-origin-tls
+      secretName: app-preview-trakrf-id-tls
       cert:
-        issue: false
+        issue: true
+        issuer: letsencrypt-prod
       middlewares:
         - name: default-chain
           namespace: traefik
-        - name: cloudflare-allow
+        - name: breakglass-allow
   middlewares:
     breakglass:
       enabled: true
