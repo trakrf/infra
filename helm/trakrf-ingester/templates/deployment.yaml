@@ -4,6 +4,12 @@ metadata:
   name: {{ include "trakrf-ingester.fullname" . }}
   labels:
     {{- include "trakrf-ingester.labels" . | nindent 4 }}
+  annotations:
+    # Stakater Reloader bounces this Deployment on changes to the broker auth
+    # Secret (creds rotation) and the cert Secret (cert-manager renewal every
+    # ~60 days). Mosquitto does not reliably pick up a new cert on SIGHUP.
+    # The annotation is harmless when broker is disabled (no watched Secrets).
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: {{ .Values.replicaCount }}
   # Ingester holds an MQTT session; avoid overlapping pods during updates.
@@ -16,9 +22,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        # MQTT credentials live in an out-of-band Secret (`just ingester-secrets`),
-        # so no chart-managed checksum — rotate via `kubectl rollout restart` after
-        # updating the Secret.
+        {{- if .Values.broker.enabled }}
+        checksum/mosquitto-config: {{ include (print $.Template.BasePath "/mosquitto-configmap.yaml") . | sha256sum }}
+        {{- end }}
       labels:
         {{- include "trakrf-ingester.selectorLabels" . | nindent 8 }}
     spec:
@@ -48,11 +54,19 @@ spec:
               value: {{ .Values.mqtt.topic | quote }}
             - name: MQTT_CLIENT_ID
               value: {{ .Values.mqtt.clientId | quote }}
-            - name: MQTT_URL
+            - name: MQTT_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mqtt.credentialsSecret }}
-                  key: MQTT_URL
+                  name: {{ .Values.broker.authSecret }}
+                  key: username
+            - name: MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.broker.authSecret }}
+                  key: password
+            # Composed via $(VAR) env interpolation (see feedback_k8s_dsn_composition).
+            - name: MQTT_URL
+              value: "mqtt://$(MQTT_USER):$(MQTT_PASSWORD)@{{ .Values.mqtt.host }}:{{ .Values.mqtt.port }}"
             - name: PG_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -66,10 +80,111 @@ spec:
               readOnly: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.broker.enabled }}
+        - name: mosquitto
+          image: "{{ .Values.broker.image.repository }}:{{ .Values.broker.image.tag }}"
+          imagePullPolicy: {{ .Values.broker.image.pullPolicy }}
+          ports:
+            - name: mqtts
+              containerPort: 8883
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            # eclipse-mosquitto image's `mosquitto` user = UID 1883.
+            runAsUser: 1883
+            runAsGroup: 1883
+          readinessProbe:
+            tcpSocket:
+              port: 8883
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8883
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: mosquitto-config
+              mountPath: /mosquitto/config
+              readOnly: true
+            - name: mosquitto-tls
+              mountPath: /mosquitto/tls
+              readOnly: true
+            - name: mosquitto-auth
+              mountPath: /mosquitto/auth
+              readOnly: true
+            - name: mosquitto-data
+              mountPath: /mosquitto/data
+          resources:
+            {{- toYaml .Values.broker.resources | nindent 12 }}
+        {{- if .Values.broker.exporter.enabled }}
+        - name: mosquitto-exporter
+          image: "{{ .Values.broker.exporter.image.repository }}:{{ .Values.broker.exporter.image.tag }}"
+          imagePullPolicy: {{ .Values.broker.exporter.image.pullPolicy }}
+          ports:
+            - name: mqtt-metrics
+              containerPort: {{ .Values.broker.exporter.port }}
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            # sapcc/mosquitto-exporter is distroless-ish; runs as nobody.
+            runAsUser: 65534
+            runAsGroup: 65534
+          env:
+            - name: BROKER_ENDPOINT
+              value: "tcp://localhost:1883"
+            - name: MQTT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.broker.authSecret }}
+                  key: username
+            - name: MQTT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.broker.authSecret }}
+                  key: password
+            - name: BIND_ADDRESS
+              value: ":{{ .Values.broker.exporter.port }}"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: mqtt-metrics
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.broker.exporter.resources | nindent 12 }}
+        {{- end }}
+        {{- end }}
       volumes:
         - name: config
           configMap:
             name: {{ include "trakrf-ingester.fullname" . }}
+        {{- if .Values.broker.enabled }}
+        - name: mosquitto-config
+          configMap:
+            name: {{ include "trakrf-ingester.fullname" . }}-mosquitto
+        - name: mosquitto-tls
+          secret:
+            secretName: {{ .Values.broker.certSecret }}
+        - name: mosquitto-auth
+          secret:
+            secretName: {{ .Values.broker.authSecret }}
+            items:
+              - key: passwd
+                path: passwd
+        - name: mosquitto-data
+          emptyDir: {}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
