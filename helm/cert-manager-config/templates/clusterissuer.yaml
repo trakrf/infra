@@ -60,4 +60,8 @@ spec:
       - http01:
           ingress:
             ingressClassName: {{ .Values.http01Solver.ingressClassName | quote }}
+            {{- with .Values.http01Solver.podTemplate }}
+            podTemplate:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
       {{- end }}

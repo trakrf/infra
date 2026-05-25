@@ -20,6 +20,10 @@ solver: ""
 http01Solver:
   enabled: false
   ingressClassName: traefik
+  # Optional pod-template override for the cert-manager-spawned solver pod.
+  # GKE overlay sets ARM tolerations here so the pod can schedule on the
+  # tainted ARM node pool.
+  podTemplate: {}
 
 # Certificates — overridden per cluster. List shape so a single chart instance
 # can render multiple Certificates (e.g. one per managed zone on GKE).
