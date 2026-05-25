@@ -86,6 +86,24 @@ case "$CLUSTER" in
     ;;
 esac
 
+# --- Preview ingress origin-lock values -----------------------------
+# Break-glass CIDR: resolve home dyn DNS at apply time. Fail loud rather than
+# deploy an empty allowlist (which would still pass schema validation but
+# render the IngressRoute open to nobody).
+BREAKGLASS_HOSTNAME="${BREAKGLASS_HOSTNAME:-opsumo-austin.asuscomm.com}"
+BREAKGLASS_IP=$(dig +short "$BREAKGLASS_HOSTNAME" A | tail -1)
+if [[ -z "$BREAKGLASS_IP" ]]; then
+  echo "FATAL: could not resolve $BREAKGLASS_HOSTNAME — refusing to apply." >&2
+  exit 1
+fi
+BREAKGLASS_CIDR="${BREAKGLASS_IP}/32"
+
+# Cloudflare IP ranges — read from the same Cloudflare tofu workspace that
+# owns the Origin Cert. JSON arrays get spliced into helm --set-json below.
+CF_IPV4_JSON=$(tofu -chdir=terraform/cloudflare output -json cloudflare_ipv4_cidrs)
+CF_IPV6_JSON=$(tofu -chdir=terraform/cloudflare output -json cloudflare_ipv6_cidrs)
+# --------------------------------------------------------------------
+
 EXTRA_ARGS=()
 if [[ -n "${TARGET_REVISION:-}" ]]; then
   echo "TARGET_REVISION override: $TARGET_REVISION"
@@ -110,6 +128,9 @@ helm upgrade --install trakrf-root argocd/root \
   --set cloudDnsZoneNameId="$GCP_DNS_ZONE_NAME_ID" \
   --set mqttPreviewIp="$MQTT_PREVIEW_IP" \
   --set mqttProdIp="$MQTT_PROD_IP" \
+  --set breakglassSourceCidr="$BREAKGLASS_CIDR" \
+  --set-json cloudflareIpv4Cidrs="$CF_IPV4_JSON" \
+  --set-json cloudflareIpv6Cidrs="$CF_IPV6_JSON" \
   "${EXTRA_ARGS[@]}"
 
 echo
