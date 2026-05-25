@@ -35,6 +35,8 @@ case "$CLUSTER" in
     GCP_CM_SA_EMAIL=""
     GCP_DNS_ZONE_NAME_APP=""
     GCP_DNS_ZONE_NAME_ID=""
+    MQTT_PREVIEW_IP=""
+    MQTT_PROD_IP=""
     ;;
   gke)
     TF_DIR="terraform/gcp"
@@ -50,6 +52,8 @@ case "$CLUSTER" in
     GCP_DNS_ZONE_NAME_APP=$(tofu -chdir="$TF_DIR" output -raw cloud_dns_zone_name)
     GCP_DNS_ZONE_NAME_ID=$(tofu  -chdir="$TF_DIR" output -raw cloud_dns_zone_name_id)
     LB_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
+    MQTT_PREVIEW_IP=$(tofu -chdir="$TF_DIR" output -raw mqtt_preview_ip)
+    MQTT_PROD_IP=$(tofu -chdir="$TF_DIR" output -raw mqtt_prod_ip)
     ;;
   eks)
     CLIENT_ID=""
@@ -62,6 +66,8 @@ case "$CLUSTER" in
     GCP_CM_SA_EMAIL=""
     GCP_DNS_ZONE_NAME_APP=""
     GCP_DNS_ZONE_NAME_ID=""
+    MQTT_PREVIEW_IP=""
+    MQTT_PROD_IP=""
     ;;
   *)
     echo "warning: no tofu output wiring for cluster '$CLUSTER'; passing blank values" >&2
@@ -75,6 +81,8 @@ case "$CLUSTER" in
     GCP_CM_SA_EMAIL=""
     GCP_DNS_ZONE_NAME_APP=""
     GCP_DNS_ZONE_NAME_ID=""
+    MQTT_PREVIEW_IP=""
+    MQTT_PROD_IP=""
     ;;
 esac
 
@@ -100,6 +108,8 @@ helm upgrade --install trakrf-root argocd/root \
   --set certManagerGcpServiceAccountEmail="$GCP_CM_SA_EMAIL" \
   --set cloudDnsZoneNameApp="$GCP_DNS_ZONE_NAME_APP" \
   --set cloudDnsZoneNameId="$GCP_DNS_ZONE_NAME_ID" \
+  --set mqttPreviewIp="$MQTT_PREVIEW_IP" \
+  --set mqttProdIp="$MQTT_PROD_IP" \
   "${EXTRA_ARGS[@]}"
 
 echo
