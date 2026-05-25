@@ -59,7 +59,7 @@ mqtt:
   # duplicate-eviction loop if the same broker is ever shared across envs.
   # See feedback_mqtt_clientid_per_cluster.
   clientId: trakrf-ingester
-  topic: "trakrf/scans/#"
+  topic: "trakrf.id/+/reads"
   host: localhost
   port: 1883
   user: trakrf-ingester
