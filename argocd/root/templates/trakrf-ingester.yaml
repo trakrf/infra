@@ -1,11 +1,20 @@
+{{- /*
+  One trakrf-ingester Application per env. Mirrors the trakrf-backend
+  pattern — same per-env DB credentials, same trakrf-system DB host,
+  same role override. The ingester has no migrate Job and no ingress.
+*/ -}}
+{{- range $env := list "preview" "prod" }}
+{{- $values := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: trakrf-db-rw.trakrf-system\n" $env $env $env }}
+---
 {{- include "trakrf.application" (dict
-  "name" "trakrf-ingester"
+  "name" (printf "trakrf-ingester-%s" $env)
   "path" "helm/trakrf-ingester"
-  "namespace" .Values.namespaces.trakrf
-  "syncWave" "2"
-  "cluster" .Values.cluster
-  "repoURL" .Values.repoURL
-  "targetRevision" .Values.targetRevision
-  "destination" .Values.destination
-  "inlineValues" ""
+  "namespace" (printf "trakrf-%s" $env)
+  "syncWave" "1"
+  "cluster" $.Values.cluster
+  "repoURL" $.Values.repoURL
+  "targetRevision" $.Values.targetRevision
+  "destination" $.Values.destination
+  "inlineValues" $values
 ) }}
+{{- end }}

@@ -12,19 +12,24 @@ spec:
     - "https://cloudnative-pg.github.io/charts"
     - "https://traefik.github.io/charts"
     - "https://charts.jetstack.io"
+    - "https://emberstack.github.io/helm-charts"
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
     - server: https://kubernetes.default.svc
-      namespace: trakrf
+      namespace: trakrf-system
+    - server: https://kubernetes.default.svc
+      namespace: trakrf-preview
+    - server: https://kubernetes.default.svc
+      namespace: trakrf-prod
+    - server: https://kubernetes.default.svc
+      namespace: reflector
     - server: https://kubernetes.default.svc
       namespace: monitoring
     - server: https://kubernetes.default.svc
       namespace: kube-system
     - server: https://kubernetes.default.svc
       namespace: cnpg-system
-    - server: https://kubernetes.default.svc
-      namespace: trakrf-db
     - server: https://kubernetes.default.svc
       namespace: traefik
     - server: https://kubernetes.default.svc

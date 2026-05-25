@@ -1,0 +1,40 @@
+# emberstack/reflector — mirrors annotated Secrets across namespaces.
+# Used to copy CNPG-managed role credential Secrets from trakrf-system
+# into trakrf-preview / trakrf-prod so app pods can mount them.
+# Cluster-scoped operator, installed in its own namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reflector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://emberstack.github.io/helm-charts
+    chart: reflector
+    targetRevision: "10.0.45"
+    helm:
+      values: |
+        {{- if eq .Values.cluster "gke" }}
+        # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule on T2A pools.
+        # See memory feedback_gke_arm_auto_taint and TRA-470.
+        tolerations:
+          - key: kubernetes.io/arch
+            operator: Equal
+            value: arm64
+            effect: NoSchedule
+        {{- end }}
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: reflector
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

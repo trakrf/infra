@@ -21,30 +21,44 @@ spec:
     initdb:
       database: {{ .Values.bootstrap.initdb.database }}
       owner: {{ .Values.bootstrap.initdb.owner | quote }}
+      {{- with .Values.bootstrap.initdb.postInitTemplateSQL }}
       postInitTemplateSQL:
-        {{- range .Values.bootstrap.initdb.postInitTemplateSQL }}
+        {{- range . }}
         - {{ . | quote }}
         {{- end }}
+      {{- end }}
+      {{- with .Values.bootstrap.initdb.postInitSQL }}
       postInitSQL:
-        {{- range .Values.bootstrap.initdb.postInitSQL }}
+        {{- range . }}
         - {{ . | quote }}
         {{- end }}
+      {{- end }}
+      {{- with .Values.bootstrap.initdb.postInitApplicationSQL }}
       postInitApplicationSQL:
-        {{- range .Values.bootstrap.initdb.postInitApplicationSQL }}
+        {{- range . }}
         - {{ . | quote }}
         {{- end }}
+      {{- end }}
 
   managed:
     roles:
-      {{- range .Values.managedRoles }}
-      - name: {{ .name | quote }}
-        ensure: {{ .ensure }}
-        login: {{ .login }}
-        superuser: {{ .superuser }}
-        createdb: {{ .createdb | default false }}
-        createrole: {{ .createrole | default false }}
+      {{- range .Values.envs }}
+      - name: {{ .appRole | quote }}
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
         passwordSecret:
-          name: {{ .passwordSecretName }}
+          name: {{ .appSecret | quote }}
+      - name: {{ .migrateRole | quote }}
+        ensure: present
+        login: true
+        superuser: false
+        createdb: true
+        createrole: false
+        passwordSecret:
+          name: {{ .migrateSecret | quote }}
       {{- end }}
 
   storage:
