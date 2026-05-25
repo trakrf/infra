@@ -86,3 +86,17 @@ output "cloud_dns_zone_name_id" {
   description = "Cloud DNS managed-zone resource name for gke.trakrf.id. Consumed by cert-manager cloudDNS solver."
   value       = google_dns_managed_zone.gke_trakrf_id.name
 }
+
+# TRA-828 — per-env MQTT broker static IPs. Consumed by:
+#   - terraform/gcp/dns.tf A records for mqtt.{env}.gke.trakrf.id
+#   - scripts/apply-root-app.sh -> argocd/root values -> trakrf-ingester per-env LB IP
+
+output "mqtt_preview_ip" {
+  description = "Static IP for the preview MQTT LoadBalancer (mqtt.preview.gke.trakrf.id)"
+  value       = google_compute_address.mqtt_preview.address
+}
+
+output "mqtt_prod_ip" {
+  description = "Static IP for the prod MQTT LoadBalancer (mqtt.prod.gke.trakrf.id)"
+  value       = google_compute_address.mqtt_prod.address
+}
