@@ -1,0 +1,28 @@
+{{- if .Values.broker.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trakrf-ingester.fullname" . }}-mqtt
+  labels:
+    {{- include "trakrf-ingester.labels" . | nindent 4 }}
+  annotations:
+    # Explicitly pin to GKE's passthrough L4 NetLB. NEG-backed L4 ILBs or any
+    # L7 ingress would either terminate TLS or do SNI routing — both break
+    # the no-SNI GL-S10 client. Default L4 ext NetLB is passthrough; the
+    # annotation is belt-and-suspenders.
+    cloud.google.com/l4-rbs: "enabled"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .Values.broker.loadBalancerIP }}
+  # Preserves the real client IP in broker logs (visible via $SYS) — useful
+  # when chasing a flapping device. Pods are 1:1 with the LB so per-node
+  # health checks are not a constraint.
+  externalTrafficPolicy: Local
+  selector:
+    {{- include "trakrf-ingester.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mqtts
+      port: 8883
+      targetPort: mqtts
+      protocol: TCP
+{{- end }}
