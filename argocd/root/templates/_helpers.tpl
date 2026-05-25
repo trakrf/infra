@@ -62,3 +62,53 @@ spec:
       - CreateNamespace=true
       - ServerSideApply=true
 {{- end -}}
+
+{{/*
+  trakrf-backend.previewIngressValues — YAML block injected into the
+  trakrf-backend-preview Application's inline helm.values. Renders the
+  two routes (direct gke.trakrf.id + CF-proxied trakrf.id) and the two
+  IPAllowList middlewares, sourcing IP CIDRs from root-chart values
+  populated by scripts/apply-root-app.sh.
+
+  Caller MUST pass the root Chart render context (`$` from a template
+  using `.Values`) — the helper reads .Values.breakglassSourceCidr,
+  .Values.cloudflareIpv4Cidrs, .Values.cloudflareIpv6Cidrs.
+*/}}
+{{- define "trakrf-backend.previewIngressValues" -}}
+ingress:
+  enabled: true
+  routes:
+    - name: gke-direct
+      host: app.preview.gke.trakrf.id
+      secretName: app-preview-gke-trakrf-id-tls
+      cert:
+        issue: true
+        issuer: letsencrypt-prod
+      middlewares:
+        - name: default-chain
+          namespace: traefik
+        - name: breakglass-allow
+    - name: cloudflare
+      host: app.preview.trakrf.id
+      secretName: trakrf-id-origin-tls
+      cert:
+        issue: false
+      middlewares:
+        - name: default-chain
+          namespace: traefik
+        - name: cloudflare-allow
+  middlewares:
+    breakglass:
+      enabled: true
+      sourceRange:
+        - {{ .Values.breakglassSourceCidr | quote }}
+    cloudflare:
+      enabled: true
+      sourceRange:
+        {{- range .Values.cloudflareIpv4Cidrs }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- range .Values.cloudflareIpv6Cidrs }}
+        - {{ . | quote }}
+        {{- end }}
+{{- end -}}
