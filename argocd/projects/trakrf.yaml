@@ -13,6 +13,7 @@ spec:
     - "https://traefik.github.io/charts"
     - "https://charts.jetstack.io"
     - "https://emberstack.github.io/helm-charts"
+    - "https://stakater.github.io/stakater-charts"
   destinations:
     - server: https://kubernetes.default.svc
       namespace: argocd
@@ -24,6 +25,8 @@ spec:
       namespace: trakrf-prod
     - server: https://kubernetes.default.svc
       namespace: reflector
+    - server: https://kubernetes.default.svc
+      namespace: reloader
     - server: https://kubernetes.default.svc
       namespace: monitoring
     - server: https://kubernetes.default.svc
