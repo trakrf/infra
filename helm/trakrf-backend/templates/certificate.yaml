@@ -1,0 +1,25 @@
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.routes }}
+{{- if and .cert .cert.issue }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .secretName }}
+  labels:
+    {{- include "trakrf-backend.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ .secretName }}
+  issuerRef:
+    name: {{ .cert.issuer }}
+    kind: ClusterIssuer
+  commonName: {{ .host }}
+  dnsNames:
+    - {{ .host }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+{{- end }}
+{{- end }}
+{{- end }}

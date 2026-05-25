@@ -40,3 +40,12 @@ cloudDnsZoneNameId: ""
 # fixed `mqtt.{env}.gke.trakrf.id` template (no per-env placeholder needed).
 mqttPreviewIp: ""
 mqttProdIp: ""
+
+# Preview ingress origin-lock — populated by scripts/apply-root-app.sh.
+# breakglassSourceCidr: resolved at apply time from a dyn DNS hostname
+#   (currently opsumo-austin.asuscomm.com); formatted as <ip>/32.
+# cloudflareIpv{4,6}Cidrs: pulled from terraform/cloudflare outputs that wrap
+#   the cloudflare_ip_ranges data source.
+breakglassSourceCidr: ""
+cloudflareIpv4Cidrs: []
+cloudflareIpv6Cidrs: []

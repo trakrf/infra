@@ -1,11 +1,19 @@
 {{- /*
   One trakrf-backend Application per env (preview, prod). Each release
   installs into its own namespace and connects to its own Postgres
-  database via its own credentials. Ingress is disabled for now — temp
-  soak hostnames + cert issuance are a follow-up ticket.
+  database via its own credentials.
+
+  Preview gets ingress + IPAllowList middlewares wired up via the
+  trakrf-backend.previewIngressValues helper. Prod stays ingress-off
+  pending production cutover (separate ticket).
 */ -}}
 {{- range $env := list "preview" "prod" }}
-{{- $values := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nmigrate:\n  database: trakrf_%s\n  user: trakrf-migrate-%s\n  credentialsSecret: trakrf-migrate-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nconfig:\n  appEnv: %s\ningress:\n  enabled: false\n" $env $env $env $env $env $env $env }}
+{{- $base := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nmigrate:\n  database: trakrf_%s\n  user: trakrf-migrate-%s\n  credentialsSecret: trakrf-migrate-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nconfig:\n  appEnv: %s\n" $env $env $env $env $env $env $env }}
+{{- $ingress := "ingress:\n  enabled: false\n" }}
+{{- if eq $env "preview" }}
+{{- $ingress = include "trakrf-backend.previewIngressValues" $ }}
+{{- end }}
+{{- $values := printf "%s%s" $base $ingress }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-backend-%s" $env)

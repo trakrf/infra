@@ -34,6 +34,32 @@ cloudflare: (_backend-conf "terraform/cloudflare")
     @tofu -chdir=terraform/cloudflare plan -out=tfplan
     @tofu -chdir=terraform/cloudflare apply tfplan
 
+# Materialize the Cloudflare Origin Cert into a Kubernetes Secret with
+# reflector annotations so it mirrors into trakrf-preview and trakrf-prod.
+# Run AFTER `just cloudflare` mints/rotates the cert. Idempotent.
+#
+# Requires kubectl context pointed at the target GKE cluster.
+origin-cert-secret:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    tofu -chdir=terraform/cloudflare output -raw origin_ca_cert_pem > "$tmp/tls.crt"
+    tofu -chdir=terraform/cloudflare output -raw origin_ca_private_key_pem > "$tmp/tls.key"
+    kubectl create namespace trakrf-system --dry-run=client -o yaml | kubectl apply -f -
+    kubectl create secret tls trakrf-id-origin-tls \
+        --cert="$tmp/tls.crt" --key="$tmp/tls.key" \
+        --namespace trakrf-system \
+        --dry-run=client -o yaml \
+      | kubectl annotate --local -f - --overwrite \
+          reflector.v1.k8s.emberstack.com/reflection-allowed=true \
+          'reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces=trakrf-preview,trakrf-prod' \
+          reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
+          'reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-preview,trakrf-prod' \
+          -o yaml \
+      | kubectl apply -f -
+    echo "trakrf-id-origin-tls applied in trakrf-system; reflector will mirror to trakrf-preview/trakrf-prod."
+
 # Plan and apply AWS infrastructure (Route53, EKS)
 aws: (_backend-conf "terraform/aws")
     @echo "Planning AWS infrastructure..."
