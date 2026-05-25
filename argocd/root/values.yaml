@@ -30,5 +30,6 @@ mainResourceGroupName: ""
 # GKE tofu output placeholders (populated by scripts/apply-root-app.sh at install time)
 gcpProjectId: ""
 certManagerGcpServiceAccountEmail: ""
-cloudDnsZoneName: ""
+cloudDnsZoneNameApp: ""
+cloudDnsZoneNameId: ""
 # Note: traefikLbIp (above) is shared — both AKS and GKE use it for their static LB IPs.
