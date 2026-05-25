@@ -24,3 +24,9 @@ variable "eks_nlb_hostname" {
   type        = string
   description = "AWS NLB hostname fronting the EKS Traefik Service (eks.trakrf.app CNAME target)"
 }
+
+variable "gke_traefik_lb_ip" {
+  type        = string
+  description = "GKE Traefik LoadBalancer static IP (terraform/gcp google_compute_address.traefik). CF A-record target for app.preview.trakrf.id; prevent_destroy on the GCP side keeps it stable."
+  default     = "34.56.243.51"
+}

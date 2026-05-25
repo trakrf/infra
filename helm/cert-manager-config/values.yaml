@@ -11,6 +11,16 @@ issuer:
 # Solver type: "cloudflare", "azureDNS", or "cloudDNS" — overridden per cluster
 solver: ""
 
+# Optional HTTP-01 fallback solver. Appended to the ClusterIssuer alongside
+# the DNS-01 solver above. Cert-manager picks the most specific selector
+# match, so DNS-01 wins for its zones and HTTP-01 catches anything else.
+# Used for hosts in zones that aren't reachable via the DNS-01 solver
+# (e.g. `app.preview.trakrf.id` — `trakrf.id` is on Cloudflare without a
+# DNS-01 token configured here).
+http01Solver:
+  enabled: false
+  ingressClassName: traefik
+
 # Certificates — overridden per cluster. List shape so a single chart instance
 # can render multiple Certificates (e.g. one per managed zone on GKE).
 certificates: []

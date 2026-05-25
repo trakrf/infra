@@ -6,6 +6,15 @@
 
 solver: cloudDNS
 
+# HTTP-01 fallback for trakrf.id-zone hosts (e.g. app.preview.trakrf.id)
+# that aren't covered by the Cloud DNS DNS-01 solver. trakrf.id is on
+# Cloudflare without a DNS-01 token configured here; HTTP-01 sidesteps
+# the whole credential question. Traefik picks up cert-manager's
+# temporary Ingress on port 80 via the `traefik` ingressClass.
+http01Solver:
+  enabled: true
+  ingressClassName: traefik
+
 cloudDNS:
   # Injected at install time — GCP project ID.
   project: REPLACE_ME

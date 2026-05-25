@@ -40,13 +40,26 @@ resource "cloudflare_record" "preview" {
   proxied = true
 }
 
-# App preview subdomain for Railway deployments
+# app.preview.trakrf.id — direct A record to GKE Traefik LB (grey-cloud /
+# DNS-only). Cut over from Railway (was CNAME to f67wu1p6.up.railway.app).
+#
+# Not CF-proxied because CF Universal SSL (Free tier) only covers single-label
+# wildcards (`*.trakrf.id` matches `app.trakrf.id`, not `app.preview.trakrf.id`)
+# — orange-cloud here would get 552 handshake failures at the edge. Origin TLS
+# uses a per-host cert-manager Certificate issued by Let's Encrypt via HTTP-01.
+# Same Traefik backend service as `app.preview.gke.trakrf.id`; per-IngressRoute
+# breakglass IPAllowList middleware enforces origin lock.
+#
+# Future: revisit CF Total TLS or Advanced Certificate when adding more hosts
+# under preview.trakrf.id or building per-tenant subdomains — at that point
+# orange-cloud + the Origin Cert path becomes viable again.
 resource "cloudflare_record" "app_preview" {
   zone_id = cloudflare_zone.domain.id
   name    = "app.preview"
-  content = var.railway_app_preview_endpoint
-  type    = "CNAME"
-  proxied = false # DNS-only mode for Railway deployments
+  content = var.gke_traefik_lb_ip
+  type    = "A"
+  proxied = false
+  comment = "GKE preview origin (DNS-only; LE cert at Traefik)"
 }
 
 # Docs subdomain for Cloudflare Pages (Docusaurus)

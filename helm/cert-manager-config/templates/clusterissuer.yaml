@@ -53,3 +53,11 @@ spec:
       {{- else }}
       {{- fail (printf "Unknown solver type: %q (expected 'cloudflare', 'azureDNS', or 'cloudDNS')" .Values.solver) }}
       {{- end }}
+      {{- if .Values.http01Solver.enabled }}
+      # HTTP-01 fallback for hosts whose zone isn't covered by any DNS-01
+      # selector above. Cert-manager creates a temporary Ingress (class
+      # `traefik`) on port 80 for /.well-known/acme-challenge/*.
+      - http01:
+          ingress:
+            ingressClassName: {{ .Values.http01Solver.ingressClassName | quote }}
+      {{- end }}
