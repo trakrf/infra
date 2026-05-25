@@ -7,9 +7,14 @@
 # limits or DNS-01 dance of a public ACME issuer. 15-year validity, instant
 # issuance.
 #
-# Wildcard covers both preview (this ticket) and the eventual production
-# cutover; the resulting Secret is reflected into every trakrf-* namespace
-# that needs it.
+# SAN covers both preview (this ticket) and the eventual production cutover;
+# the resulting Secret is reflected into every trakrf-* namespace that needs
+# it.
+#
+# Wildcards are single-label per RFC 4592: `*.trakrf.id` matches `app.trakrf.id`
+# but NOT `app.preview.trakrf.id`. The latter needs a second-level wildcard
+# (`*.preview.trakrf.id`) — bake both in so the same cert serves any preview-env
+# host (api, app, …) without further re-issuance.
 
 resource "tls_private_key" "origin_ca" {
   algorithm = "RSA"
@@ -27,12 +32,13 @@ resource "tls_cert_request" "origin_ca" {
   dns_names = [
     "trakrf.id",
     "*.trakrf.id",
+    "*.preview.trakrf.id",
   ]
 }
 
 resource "cloudflare_origin_ca_certificate" "trakrf_id" {
   csr                = tls_cert_request.origin_ca.cert_request_pem
-  hostnames          = ["trakrf.id", "*.trakrf.id"]
+  hostnames          = ["trakrf.id", "*.trakrf.id", "*.preview.trakrf.id"]
   request_type       = "origin-rsa"
   requested_validity = 5475 # 15 years
 }
