@@ -27,15 +27,36 @@ serviceMonitor:
   interval: 30s
   scrapeTimeout: 10s
 
-# Public ingress (Traefik IngressRoute CRD). TRA-381.
-# host is cluster-specific — overridden in values-<cluster>.yaml
+# Public ingress (Traefik IngressRoute CRDs).
+#
+# `routes` is a list — each entry produces one IngressRoute (TLS secretName
+# is per-IngressRoute, not per-rule, so multi-host needs multiple
+# IngressRoutes). Optional per-route Certificate is rendered via
+# templates/certificate.yaml when `cert.issue: true`.
+#
+# `middlewares.{breakglass,cloudflare}` render IPAllowList Middleware
+# resources in the release namespace. Routes reference them by name.
 ingress:
-  enabled: true
-  host: ""
-  # Default chain (security-headers + redirect-https) lives in helm/traefik-config.
+  enabled: false
+  routes: []
+  # Example route shape (see argocd/root/templates/_helpers.tpl for live values):
+  #   - name: gke-direct
+  #     host: app.preview.gke.trakrf.id
+  #     secretName: app-preview-gke-trakrf-id-tls
+  #     cert:
+  #       issue: true
+  #       issuer: letsencrypt-prod
+  #     middlewares:
+  #       - name: default-chain
+  #         namespace: traefik
+  #       - name: breakglass-allow
   middlewares:
-    - name: default-chain
-      namespace: traefik
+    breakglass:
+      enabled: false
+      sourceRange: []
+    cloudflare:
+      enabled: false
+      sourceRange: []
 
 resources:
   requests:
