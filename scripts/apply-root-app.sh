@@ -86,22 +86,30 @@ case "$CLUSTER" in
     ;;
 esac
 
-# --- Preview ingress origin-lock values -----------------------------
-# Break-glass CIDR: resolve home dyn DNS at apply time. Fail loud rather than
-# deploy an empty allowlist (which would still pass schema validation but
-# render the IngressRoute open to nobody).
-BREAKGLASS_HOSTNAME="${BREAKGLASS_HOSTNAME:-opsumo-austin.asuscomm.com}"
-BREAKGLASS_IP=$(dig +short "$BREAKGLASS_HOSTNAME" A | tail -1)
-if [[ -z "$BREAKGLASS_IP" ]]; then
-  echo "FATAL: could not resolve $BREAKGLASS_HOSTNAME — refusing to apply." >&2
-  exit 1
-fi
-BREAKGLASS_CIDR="${BREAKGLASS_IP}/32"
+# --- Preview ingress origin-lock values (GKE-only) ------------------
+# Only the GKE root chart consumes these. Skip on dormant clusters so
+# `apply-root-app.sh aks` doesn't suddenly require the Cloudflare tofu
+# workspace to be initialized locally.
+BREAKGLASS_CIDR=""
+CF_IPV4_JSON="[]"
+CF_IPV6_JSON="[]"
+if [[ "$CLUSTER" == "gke" ]]; then
+  # Break-glass CIDR: resolve home dyn DNS at apply time. Fail loud rather
+  # than deploy an empty allowlist (which would still pass schema validation
+  # but render the IngressRoute open to nobody).
+  BREAKGLASS_HOSTNAME="${BREAKGLASS_HOSTNAME:-opsumo-austin.asuscomm.com}"
+  BREAKGLASS_IP=$(dig +short "$BREAKGLASS_HOSTNAME" A | tail -1)
+  if [[ -z "$BREAKGLASS_IP" ]]; then
+    echo "FATAL: could not resolve $BREAKGLASS_HOSTNAME — refusing to apply." >&2
+    exit 1
+  fi
+  BREAKGLASS_CIDR="${BREAKGLASS_IP}/32"
 
-# Cloudflare IP ranges — read from the same Cloudflare tofu workspace that
-# owns the Origin Cert. JSON arrays get spliced into helm --set-json below.
-CF_IPV4_JSON=$(tofu -chdir=terraform/cloudflare output -json cloudflare_ipv4_cidrs)
-CF_IPV6_JSON=$(tofu -chdir=terraform/cloudflare output -json cloudflare_ipv6_cidrs)
+  # Cloudflare IP ranges — pulled from the cloudflare tofu workspace that owns
+  # the Origin Cert. JSON arrays get spliced into helm --set-json below.
+  CF_IPV4_JSON=$(tofu -chdir=terraform/cloudflare output -json cloudflare_ipv4_cidrs)
+  CF_IPV6_JSON=$(tofu -chdir=terraform/cloudflare output -json cloudflare_ipv6_cidrs)
+fi
 # --------------------------------------------------------------------
 
 EXTRA_ARGS=()
