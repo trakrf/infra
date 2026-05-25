@@ -1,10 +1,15 @@
-# GKE overlay — distinct MQTT clientId so GKE doesn't collide with Railway
-# prod or other cluster ingesters on the shared EMQX Cloud broker (MQTT
-# evicts duplicate clientId sessions, producing reconnect flap). One-line
-# tweak per overlay; base `trakrf-ingester` default stays intact for any
-# bare helm install without a cluster overlay.
+# GKE overlay — enables Mosquitto sidecar (TRA-828). Per-env hostname and
+# loadBalancerIP are injected via the root chart's inlineValues (see
+# argocd/root/templates/trakrf-ingester.yaml).
+#
+# clientId is also overridden per-env in the root chart for cross-env clarity
+# (see feedback_mqtt_clientid_per_cluster). The base value here stays as the
+# legacy GKE-wide id for any out-of-overlay test renders.
 mqtt:
   clientId: trakrf-ingester-gke
+
+broker:
+  enabled: true
 
 # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM node pools
 # (T2A/T2D/Axion). AKS Ubuntu does not. Toleration scoped to GKE overlays
