@@ -8,13 +8,9 @@ acme:
 issuer:
   name: letsencrypt-prod
 
-# Solver type: "cloudflare" or "azureDNS" — overridden per cluster
+# Solver type: "cloudflare", "azureDNS", or "cloudDNS" — overridden per cluster
 solver: ""
 
-# Certificate SANs — overridden per cluster
-certificate:
-  name: trakrf-wildcard
-  namespace: traefik
-  secretName: trakrf-wildcard-tls
-  commonName: ""
-  dnsNames: []
+# Certificates — overridden per cluster. List shape so a single chart instance
+# can render multiple Certificates (e.g. one per managed zone on GKE).
+certificates: []

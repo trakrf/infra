@@ -12,9 +12,11 @@ azureDNS:
   managedIdentity:
     clientID: REPLACE_ME
 
-certificate:
-  name: trakrf-aks-wildcard
-  commonName: aks.trakrf.app
-  dnsNames:
-    - aks.trakrf.app
-    - "*.aks.trakrf.app"
+certificates:
+  - name: trakrf-aks-wildcard
+    namespace: cert-manager
+    secretName: trakrf-aks-wildcard-tls
+    commonName: aks.trakrf.app
+    dnsNames:
+      - aks.trakrf.app
+      - "*.aks.trakrf.app"
