@@ -32,8 +32,8 @@ grafana:
     storageClassName: premium-rwo
   grafana.ini:
     server:
-      domain: grafana.gke.trakrf.app
-      root_url: https://grafana.gke.trakrf.app
+      domain: grafana.gke.trakrf.id
+      root_url: https://grafana.gke.trakrf.id
   tolerations:
     - key: kubernetes.io/arch
       operator: Equal
@@ -46,6 +46,13 @@ prometheusOperator:
       operator: Equal
       value: arm64
       effect: NoSchedule
+  admissionWebhooks:
+    patch:
+      tolerations:
+        - key: kubernetes.io/arch
+          operator: Equal
+          value: arm64
+          effect: NoSchedule
 
 kube-state-metrics:
   tolerations:
