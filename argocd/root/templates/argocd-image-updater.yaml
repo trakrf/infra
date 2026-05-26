@@ -1,0 +1,72 @@
+{{- /*
+  ArgoCD Image Updater — upstream argo-helm chart. Watches GHCR for new
+  preview-branch builds of the trakrf-backend image and patches the
+  trakrf-backend-preview Application's helm parameters so the GKE preview
+  env tracks the platform preview-branch composition automatically.
+
+  GKE-only: the preview composition only lands on GKE today (AKS stopped,
+  EKS deprovisioned). On non-GKE clusters this Application isn't emitted,
+  so manual tag bumps stay in effect there.
+
+  Safety: Image Updater only touches Applications carrying its annotations.
+  The trakrf-backend-prod Application is intentionally NOT annotated — prod
+  stays a deliberate manual tag promotion once it shares the GKE cluster.
+*/ -}}
+{{- if eq .Values.cluster "gke" }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-image-updater
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: trakrf
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argocd-image-updater
+    # Pin chart (not appVersion) — see memory feedback_helm_chart_vs_app_version.
+    targetRevision: "1.2.2"
+    helm:
+      values: |
+        # In-cluster ArgoCD API target — no token needed when the Updater
+        # runs alongside ArgoCD; it patches Applications via the Kubernetes
+        # API using the chart-managed Role + RoleBinding in the argocd ns.
+        config:
+          argocd:
+            grpcWeb: true
+            serverAddress: "argocd-server.argocd.svc.cluster.local:443"
+            insecure: false
+            plaintext: false
+          # ghcr.io trakrf/backend is a public package — anonymous pulls
+          # resolve the :preview tag's digest. If the package goes private
+          # later, add a `credentials:` ref here pointing at a GHCR PAT
+          # mounted via a secret.
+          registries:
+            - name: GitHub Container Registry
+              api_url: https://ghcr.io
+              prefix: ghcr.io
+              ping: yes
+              insecure: no
+              default: false
+        # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM pools
+        # (T2A/T2D/Axion). Image Updater is a single-pod controller, so a
+        # top-level tolerations stanza is enough — no per-subcomponent split
+        # like cert-manager. See memory feedback_gke_arm_auto_taint.
+        tolerations:
+          - key: kubernetes.io/arch
+            operator: Equal
+            value: arm64
+            effect: NoSchedule
+  destination:
+    server: {{ .Values.destination.server }}
+    namespace: {{ .Values.namespaces.argocd }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+{{- end }}
