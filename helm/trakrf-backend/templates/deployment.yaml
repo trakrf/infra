@@ -27,7 +27,7 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: backend
-          image: "{{ .Values.image.repository }}:{{ required "image.tag must be set (usually in values-<cluster>.yaml)" .Values.image.tag }}"
+          image: {{ include "trakrf-backend.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # Invoke the `serve` subcommand explicitly. The image CMD is just
           # ["/server"] and bare /server hangs after Logger init when env
