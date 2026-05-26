@@ -261,3 +261,58 @@ grafana-ui:
 prometheus-ui:
     @echo "Prometheus at http://<host-ip>:9090"
     @kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090 --address 0.0.0.0
+
+# Restore proof: pull the latest pg_dump for ENV from GCS, restore it
+# into a scratch database on the live CNPG cluster, run a sanity query,
+# drop the scratch database. Requires:
+#   - `gcloud auth application-default login` (for `gcloud storage`)
+#   - kubectl context pointed at the GKE cluster
+#
+# Usage:
+#   just db-restore-test            # defaults to preview
+#   just db-restore-test prod
+db-restore-test ENV="preview":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
+    echo "Looking for latest dump in gs://${bucket}/{{ ENV }}/..."
+    latest=$(gcloud storage ls "gs://${bucket}/{{ ENV }}/**/*.pgdump" | sort | tail -1)
+    test -n "$latest" || { echo "no dumps found in gs://${bucket}/{{ ENV }}/"; exit 1; }
+    echo "Latest dump: $latest"
+
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    gcloud storage cp "$latest" "$tmp/dump.pgdump"
+    ls -la "$tmp/dump.pgdump"
+
+    # `kubectl exec ... psql -U postgres` on the CNPG primary uses peer
+    # auth via the unix socket — no password needed.
+    pg_pod=$(kubectl -n trakrf-system get pod \
+      -l cnpg.io/cluster=trakrf-db,role=primary \
+      -o jsonpath='{.items[0].metadata.name}')
+    test -n "$pg_pod" || { echo "no CNPG primary pod found"; exit 1; }
+    scratch="trakrf_restore_test_$(date -u +%s)"
+
+    echo "Creating scratch DB ${scratch} on ${pg_pod}..."
+    kubectl -n trakrf-system exec "${pg_pod}" -- \
+      psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"${scratch}\""
+
+    echo "Restoring dump into ${scratch}..."
+    kubectl -n trakrf-system exec -i "${pg_pod}" -- \
+      pg_restore --no-owner --no-privileges -U postgres -d "${scratch}" \
+      < "$tmp/dump.pgdump"
+
+    echo "Sanity check — schema + table row counts:"
+    kubectl -n trakrf-system exec "${pg_pod}" -- \
+      psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
+        -c "\dn" \
+        -c "SELECT schemaname, relname, n_live_tup
+            FROM pg_stat_user_tables
+            WHERE schemaname = 'trakrf'
+            ORDER BY relname;"
+
+    echo "Dropping scratch DB ${scratch}..."
+    kubectl -n trakrf-system exec "${pg_pod}" -- \
+      psql -U postgres -c "DROP DATABASE \"${scratch}\""
+
+    echo "Restore proof complete for ENV={{ ENV }}."
