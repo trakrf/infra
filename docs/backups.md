@@ -56,6 +56,11 @@ primary, prints `\dn` and table row counts from the `trakrf` schema,
 then drops the scratch database. Safe to run on the live cluster — no
 side effects on the env databases.
 
+The recipe brackets `pg_restore` with `SELECT timescaledb_pre_restore()`
+and `SELECT timescaledb_post_restore()` per the Timescale logical-restore
+procedure — without this, pg_restore fails on hypertable foreign-key
+constraints. Any manual restore needs the same bracketing.
+
 ## Restoring (real)
 
 For a real restore-to-prod scenario:

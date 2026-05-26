@@ -294,13 +294,29 @@ db-restore-test ENV="preview":
     scratch="trakrf_restore_test_$(date -u +%s)"
 
     echo "Creating scratch DB ${scratch} on ${pg_pod}..."
+    # Create the scratch DB with the timescaledb extension pre-installed,
+    # then bracket pg_restore with timescaledb_pre_restore / _post_restore.
+    # Without that bracketing, pg_restore emits "ONLY option not supported
+    # on hypertable operations" while replaying foreign-key constraints
+    # and exits non-zero — the standard Timescale logical-restore pattern.
+    # See https://docs.timescale.com/self-hosted/latest/backup-and-restore/logical-backup/
     kubectl -n trakrf-system exec "${pg_pod}" -- \
-      psql -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"${scratch}\""
+      psql -U postgres -v ON_ERROR_STOP=1 \
+        -c "CREATE DATABASE \"${scratch}\""
+    kubectl -n trakrf-system exec "${pg_pod}" -- \
+      psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
+        -c "CREATE EXTENSION IF NOT EXISTS timescaledb" \
+        -c "SELECT timescaledb_pre_restore()"
 
     echo "Restoring dump into ${scratch}..."
     kubectl -n trakrf-system exec -i "${pg_pod}" -- \
       pg_restore --no-owner --no-privileges -U postgres -d "${scratch}" \
       < "$tmp/dump.pgdump"
+
+    echo "Running timescaledb_post_restore()..."
+    kubectl -n trakrf-system exec "${pg_pod}" -- \
+      psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
+        -c "SELECT timescaledb_post_restore()"
 
     echo "Sanity check — schema + table row counts:"
     kubectl -n trakrf-system exec "${pg_pod}" -- \
