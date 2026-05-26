@@ -80,11 +80,13 @@ backups:
   # (terraform/gcp/cnpg_backups.tf). retentionDays here is documentation
   # only — changing it does NOT change behavior.
   retentionDays: 14
-  # Two-container pattern: CNPG postgres image runs pg_dump into an
-  # emptyDir volume; Cloud SDK image uploads to GCS. Avoids building a
-  # custom multi-tool image.
+  # Two-container pattern. The CNPG postgres image runs pg_dump into an
+  # emptyDir volume; a tiny curl image uploads to GCS via the JSON API
+  # using a Workload Identity access token from the GKE metadata server.
+  # We use curl (not gcloud) because Google does not publish a multi-arch
+  # google/cloud-sdk image — the amd64-only image crashes on ARM nodes.
   pgDumpImage: ghcr.io/cloudnative-pg/postgresql:17.2
-  gsutilImage: google/cloud-sdk:slim
+  uploadImage: curlimages/curl:8.10.1
   # K8s SA name in the chart's namespace. Must match the WI subject in
   # terraform/gcp/cnpg_backups.tf (trakrf-system/cnpg-backups).
   serviceAccountName: cnpg-backups
