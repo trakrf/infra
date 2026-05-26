@@ -1,0 +1,25 @@
+{{- /*
+  ImageUpdater custom resource that points the controller at the
+  trakrf-backend-preview Application.
+
+  argocd-image-updater v1.2.x switched from scanning Argo Applications
+  for `argocd-image-updater.argoproj.io/*` annotations to a CRD-based
+  discovery model. The `useAnnotations: true` flag is the bridge: the
+  CR selects the Application by name pattern, and the controller then
+  reads image configuration from the Application's annotations — the
+  exact set defined in trakrf-backend.previewImageUpdaterAnnotations.
+
+  GKE-only and preview-only, mirroring the annotation gating: prod is
+  never selected, so prod stays a deliberate manual tag promotion.
+*/ -}}
+{{- if eq .Values.cluster "gke" }}
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: trakrf-backend-preview
+  namespace: {{ .Values.namespaces.argocd }}
+spec:
+  applicationRefs:
+    - namePattern: trakrf-backend-preview
+      useAnnotations: true
+{{- end }}

@@ -8,9 +8,12 @@
   EKS deprovisioned). On non-GKE clusters this Application isn't emitted,
   so manual tag bumps stay in effect there.
 
-  Safety: Image Updater only touches Applications carrying its annotations.
-  The trakrf-backend-prod Application is intentionally NOT annotated — prod
-  stays a deliberate manual tag promotion once it shares the GKE cluster.
+  Chart v1.2.x uses an ImageUpdater CRD for discovery. The companion
+  argocd-image-updater-cr.yaml emits a CR with `useAnnotations: true` that
+  selects the trakrf-backend-preview Application by name and reads the
+  image config from that Application's annotations. Prod is never selected,
+  so the trakrf-backend-prod Application stays untouched — manual tag
+  promotion remains the contract.
 */ -}}
 {{- if eq .Values.cluster "gke" }}
 apiVersion: argoproj.io/v1alpha1
@@ -31,15 +34,7 @@ spec:
     targetRevision: "1.2.2"
     helm:
       values: |
-        # In-cluster ArgoCD API target — no token needed when the Updater
-        # runs alongside ArgoCD; it patches Applications via the Kubernetes
-        # API using the chart-managed Role + RoleBinding in the argocd ns.
         config:
-          argocd:
-            grpcWeb: true
-            serverAddress: "argocd-server.argocd.svc.cluster.local:443"
-            insecure: false
-            plaintext: false
           # ghcr.io trakrf/backend is a public package — anonymous pulls
           # resolve the :preview tag's digest. If the package goes private
           # later, add a `credentials:` ref here pointing at a GHCR PAT
