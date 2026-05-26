@@ -1,16 +1,19 @@
 {{- /*
-  ArgoCD Image Updater — upstream argo-helm chart. Watches GHCR for new
-  preview-branch builds of the trakrf-backend image and patches the
-  trakrf-backend-preview Application's helm parameters so the GKE preview
-  env tracks the platform preview-branch composition automatically.
+  ArgoCD Image Updater — upstream argo-helm chart, controller component
+  only. Chart 1.2.x ships a CRD-driven controller (`run` subcommand
+  reconciles ImageUpdater CRs); legacy Application annotations are NOT
+  consulted by this controller. The actual update policy for the preview
+  backend lives in trakrf-backend-image-updater.yaml as an ImageUpdater CR.
 
   GKE-only: the preview composition only lands on GKE today (AKS stopped,
   EKS deprovisioned). On non-GKE clusters this Application isn't emitted,
-  so manual tag bumps stay in effect there.
+  and no ImageUpdater CR is rendered, so manual tag bumps stay in effect
+  there.
 
-  Safety: Image Updater only touches Applications carrying its annotations.
-  The trakrf-backend-prod Application is intentionally NOT annotated — prod
-  stays a deliberate manual tag promotion once it shares the GKE cluster.
+  Safety: the controller only touches Applications named by an
+  ImageUpdater CR. The trakrf-backend-prod Application has no CR pointing
+  at it — prod stays a deliberate manual tag promotion once it shares
+  the GKE cluster.
 */ -}}
 {{- if eq .Values.cluster "gke" }}
 apiVersion: argoproj.io/v1alpha1
