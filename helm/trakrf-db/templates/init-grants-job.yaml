@@ -78,10 +78,31 @@ spec:
               REVOKE CONNECT ON DATABASE {{ $env.database }} FROM PUBLIC;
               GRANT CONNECT ON DATABASE {{ $env.database }} TO "{{ $env.appRole }}";
               GRANT USAGE ON SCHEMA trakrf TO "{{ $env.appRole }}";
+              -- Retroactive grants on already-existing objects. ALTER DEFAULT
+              -- PRIVILEGES (below) only affects FUTURE objects, so on its own
+              -- it can't recover from a DROP SCHEMA CASCADE flow: dropping the
+              -- schema wipes pg_default_acl entries for that schema, and any
+              -- objects created BEFORE the policy is re-installed inherit no
+              -- grants. The ON ALL ... statements here are idempotent and
+              -- backfill the missing grants when this Job re-runs after a
+              -- schema rebuild.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA trakrf
+                TO "{{ $env.appRole }}";
+              GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA trakrf
+                TO "{{ $env.appRole }}";
+              GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA trakrf
+                TO "{{ $env.appRole }}";
               ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
                 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{{ $env.appRole }}";
               ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
                 GRANT USAGE, SELECT ON SEQUENCES TO "{{ $env.appRole }}";
+              -- EXECUTE on functions: required for trigger helpers (e.g.
+              -- trakrf.generate_obfuscated_id called by entity-table INSERT
+              -- triggers). Without this the app role can read/write tables
+              -- but INSERTs that touch a trigger fail with "permission
+              -- denied for function ...".
+              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
+                GRANT EXECUTE ON FUNCTIONS TO "{{ $env.appRole }}";
               -- NOTE: ALTER DATABASE / ALTER ROLE for app.current_org_id requires
               -- SUPERUSER (Postgres restricts customizable parameter writes to
               -- superusers for unregistered GUCs). The migrate role is the DB
