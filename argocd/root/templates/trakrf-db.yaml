@@ -5,6 +5,10 @@
        Ignoring fields owned by it filters out all operator-filled
        defaults (podAntiAffinityType, connectionLimit, inherit, etc.). */ -}}
 {{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - manager\n" -}}
+{{- /* Inline values: pass cluster-specific backup wiring (bucket name +
+       GSA email) into the trakrf-db chart. Blank strings on non-GKE
+       clusters are fine — backups.enabled stays false there. */ -}}
+{{- $inline := printf "backups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" .Values.cnpgBackupBucket .Values.cnpgBackupsGcpServiceAccountEmail -}}
 {{- include "trakrf.application" (dict
   "name" "trakrf-db"
   "path" "helm/trakrf-db"
@@ -14,6 +18,6 @@
   "repoURL" .Values.repoURL
   "targetRevision" .Values.targetRevision
   "destination" .Values.destination
-  "inlineValues" ""
+  "inlineValues" $inline
   "ignoreDifferences" $ignore
 ) }}
