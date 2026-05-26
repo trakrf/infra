@@ -6,6 +6,14 @@
   Preview gets ingress + IPAllowList middlewares wired up via the
   trakrf-backend.previewIngressValues helper. Prod stays ingress-off
   pending production cutover (separate ticket).
+
+  On GKE, the preview Application also carries ArgoCD Image Updater
+  annotations so its image.tag tracks the upstream platform preview-
+  branch composition. Prod is intentionally NEVER annotated — prod
+  stays a deliberate manual tag promotion (the paying-customer-on-a-
+  stable-pin constraint). The annotations are gated on cluster=gke so
+  AKS/EKS overlays don't surface stray Image Updater annotations on
+  Applications that nothing is watching.
 */ -}}
 {{- range $env := list "preview" "prod" }}
 {{- $base := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nmigrate:\n  database: trakrf_%s\n  user: trakrf-migrate-%s\n  credentialsSecret: trakrf-migrate-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nconfig:\n  appEnv: %s\n" $env $env $env $env $env $env $env }}
@@ -14,6 +22,10 @@
 {{- $ingress = include "trakrf-backend.previewIngressValues" $ }}
 {{- end }}
 {{- $values := printf "%s%s" $base $ingress }}
+{{- $extraAnnotations := "" }}
+{{- if and (eq $env "preview") (eq $.Values.cluster "gke") }}
+{{- $extraAnnotations = include "trakrf-backend.previewImageUpdaterAnnotations" $ }}
+{{- end }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-backend-%s" $env)
@@ -25,5 +37,6 @@
   "targetRevision" $.Values.targetRevision
   "destination" $.Values.destination
   "inlineValues" $values
+  "extraAnnotations" $extraAnnotations
 ) }}
 {{- end }}

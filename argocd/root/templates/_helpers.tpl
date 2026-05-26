@@ -19,6 +19,9 @@
   - `inlineValues` is a YAML string (pre-rendered) injected via
     source.helm.values — use for tofu-sourced values that must be
     substituted per-install. Empty string skips the stanza.
+  - `extraAnnotations` (optional) is a pre-rendered YAML string of
+    additional metadata.annotations — e.g. ArgoCD Image Updater
+    annotations on the preview Application. Empty string skips.
   - Upstream charts (Application pointing at e.g. charts.jetstack.io)
     do NOT use this helper — they emit their full source block inline
     since they can't reference valueFiles inside a different repo.
@@ -31,6 +34,9 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: {{ .syncWave | quote }}
+    {{- if .extraAnnotations }}
+{{ .extraAnnotations | indent 4 }}
+    {{- end }}
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -74,6 +80,32 @@ spec:
   using `.Values`) — the helper reads .Values.breakglassSourceCidr,
   .Values.cloudflareIpv4Cidrs, .Values.cloudflareIpv6Cidrs.
 */}}
+{{/*
+  trakrf-backend.previewImageUpdaterAnnotations — emit ArgoCD Image
+  Updater annotations for the GKE preview Application. Watches the
+  floating `:preview` tag on ghcr.io/trakrf/backend (published by
+  platform docker-build.yml on every preview-branch rewrite); the
+  `digest` strategy redeploys whenever that tag's digest changes.
+
+  Write-back is `argocd` (default): Image Updater patches the
+  Application's spec.source.helm.parameters with the resolved digest
+  (sha256:<hex>) as image.tag. The chart helper trakrf-backend.image
+  recognises the sha256: prefix and renders <repo>@<digest>. The
+  values-gke.yaml image.tag pin stays as the manual bootstrap value;
+  the live tag lives on the Application until a manual override
+  re-asserts (set image.tag back via values-gke.yaml + helm parameter
+  removal). values-gke.yaml.image.tag is NOT modified.
+
+  The image alias `backend` ties the per-image annotations together.
+*/}}
+{{- define "trakrf-backend.previewImageUpdaterAnnotations" -}}
+argocd-image-updater.argoproj.io/image-list: backend=ghcr.io/trakrf/backend:preview
+argocd-image-updater.argoproj.io/backend.update-strategy: digest
+argocd-image-updater.argoproj.io/backend.helm.image-name: image.repository
+argocd-image-updater.argoproj.io/backend.helm.image-tag: image.tag
+argocd-image-updater.argoproj.io/write-back-method: argocd
+{{- end -}}
+
 {{- define "trakrf-backend.previewIngressValues" -}}
 ingress:
   enabled: true
