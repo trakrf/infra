@@ -81,8 +81,12 @@ be a deliberate, supervised operation.
 - `helm/trakrf-db/templates/backup-cronjob.yaml` renders one
   `batch/v1 CronJob` per env database. Two containers: an init container
   with the CNPG postgres image runs `pg_dump -Fc -Z 6 -f /dump/dump.pgdump`;
-  the main container with `google/cloud-sdk:slim` uploads the file with
-  `gcloud storage cp`. EmptyDir volume between them.
+  the main container (curlimages/curl) uploads the file to GCS via the
+  JSON API's simple media upload, authenticating with an OAuth access
+  token fetched from the GKE metadata server. EmptyDir volume between
+  them. We use curl rather than the gcloud CLI because Google does not
+  publish a multi-arch `google/cloud-sdk` image, and the GKE primary
+  node pool here is ARM64.
 - The CronJob pod runs as the `cnpg-backups` ServiceAccount in the
   `trakrf-system` namespace
   (`helm/trakrf-db/templates/backup-serviceaccount.yaml`), annotated with
