@@ -26,7 +26,7 @@ resource "google_storage_bucket" "cnpg_backups" {
     }
   }
 
-  labels = local.common_labels
+  labels = merge(local.common_labels, { ticket = "tra-798" })
 }
 
 resource "google_service_account" "cnpg_backups" {
