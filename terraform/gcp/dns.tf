@@ -94,6 +94,17 @@ resource "google_dns_record_set" "mqtt_prod" {
   rrdatas      = [google_compute_address.mqtt_prod.address]
 }
 
+# TRA-810 — A record for the preview CNPG primary LoadBalancer, used by
+# external psql clients developing the M3 FDW-pull-migration. Preview-only
+# by design; prod stays in-cluster-only.
+resource "google_dns_record_set" "db_preview" {
+  managed_zone = google_dns_managed_zone.gke_trakrf_id.name
+  name         = "db.preview.${google_dns_managed_zone.gke_trakrf_id.dns_name}"
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.db_preview.address]
+}
+
 # Per-env backend A records. The `*.gke.trakrf.id` wildcard is single-label
 # (RFC 4592) so it covers `mqtt.gke.trakrf.id` etc. but not two-label hosts
 # like `app.preview.gke.trakrf.id`. Explicit records bridge the gap. Same
