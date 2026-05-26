@@ -1,0 +1,51 @@
+{{- /*
+  ImageUpdater CR for the trakrf-backend preview deployment on GKE.
+
+  The argocd-image-updater chart 1.2.x runs a controller-runtime manager
+  that reconciles ImageUpdater CRs — Application annotations are no
+  longer consulted. This CR declares the update policy that was
+  previously encoded as annotations on the trakrf-backend-preview
+  Application.
+
+  Watches the floating `:preview` tag on ghcr.io/trakrf/backend (rebuilt
+  by platform docker-build.yml on every preview-branch rewrite); the
+  `digest` strategy redeploys whenever the tag's resolved digest changes.
+
+  Write-back is `argocd`: the controller patches the matched Application's
+  spec.source.helm.parameters with the resolved digest (sha256:<hex>) as
+  image.tag. The chart helper trakrf-backend.image renders <repo>@<digest>
+  when it sees the sha256: prefix. The values-gke.yaml image.tag pin is
+  the bootstrap value; the live tag lives on the Application until a
+  manual override re-asserts (remove the helm parameter and reapply
+  values-gke.yaml).
+
+  GKE-only — guarded by .Values.cluster, mirroring the controller
+  Application in argocd-image-updater.yaml.
+
+  Safety: only namePattern: trakrf-backend-preview is referenced. The
+  trakrf-backend-prod Application is intentionally NOT matched —
+  prod stays a deliberate manual tag promotion.
+*/ -}}
+{{- if eq .Values.cluster "gke" }}
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: trakrf-backend-preview
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  applicationRefs:
+    - namePattern: trakrf-backend-preview
+      images:
+        - alias: backend
+          imageName: ghcr.io/trakrf/backend:preview
+          commonUpdateSettings:
+            updateStrategy: digest
+          manifestTargets:
+            helm:
+              name: image.repository
+              tag: image.tag
+      writeBackConfig:
+        method: argocd
+{{- end }}
