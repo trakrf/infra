@@ -66,3 +66,12 @@ storage:
 affinity:
   nodeSelector: {}
   tolerations: []
+
+# TRA-810 — External LoadBalancer Service for the preview CNPG primary so
+# external psql clients can reach it for FDW pull-migration development.
+# Disabled by default; the GKE root chart overlay sets enabled=true and
+# wires loadBalancerIP + sourceRanges from tofu outputs.
+externalPreview:
+  enabled: false
+  loadBalancerIP: ""
+  sourceRanges: []
