@@ -100,3 +100,11 @@ output "mqtt_prod_ip" {
   description = "Static IP for the prod MQTT LoadBalancer (mqtt.prod.gke.trakrf.id)"
   value       = google_compute_address.mqtt_prod.address
 }
+
+# TRA-810 — Preview CNPG primary external IP. Consumed by:
+#   - terraform/gcp/dns.tf A record for db.preview.gke.trakrf.id
+#   - scripts/apply-root-app.sh -> argocd/root values -> trakrf-db preview LB IP
+output "db_preview_ip" {
+  description = "Static IP for the preview CNPG primary LoadBalancer (db.preview.gke.trakrf.id)"
+  value       = google_compute_address.db_preview.address
+}

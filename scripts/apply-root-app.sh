@@ -37,6 +37,7 @@ case "$CLUSTER" in
     GCP_DNS_ZONE_NAME_ID=""
     MQTT_PREVIEW_IP=""
     MQTT_PROD_IP=""
+    DB_PREVIEW_IP=""
     ;;
   gke)
     TF_DIR="terraform/gcp"
@@ -54,6 +55,7 @@ case "$CLUSTER" in
     LB_IP=$(tofu -chdir="$TF_DIR" output -raw traefik_lb_ip)
     MQTT_PREVIEW_IP=$(tofu -chdir="$TF_DIR" output -raw mqtt_preview_ip)
     MQTT_PROD_IP=$(tofu -chdir="$TF_DIR" output -raw mqtt_prod_ip)
+    DB_PREVIEW_IP=$(tofu -chdir="$TF_DIR" output -raw db_preview_ip)
     ;;
   eks)
     CLIENT_ID=""
@@ -68,6 +70,7 @@ case "$CLUSTER" in
     GCP_DNS_ZONE_NAME_ID=""
     MQTT_PREVIEW_IP=""
     MQTT_PROD_IP=""
+    DB_PREVIEW_IP=""
     ;;
   *)
     echo "warning: no tofu output wiring for cluster '$CLUSTER'; passing blank values" >&2
@@ -83,6 +86,7 @@ case "$CLUSTER" in
     GCP_DNS_ZONE_NAME_ID=""
     MQTT_PREVIEW_IP=""
     MQTT_PROD_IP=""
+    DB_PREVIEW_IP=""
     ;;
 esac
 
@@ -136,6 +140,7 @@ helm upgrade --install trakrf-root argocd/root \
   --set cloudDnsZoneNameId="$GCP_DNS_ZONE_NAME_ID" \
   --set mqttPreviewIp="$MQTT_PREVIEW_IP" \
   --set mqttProdIp="$MQTT_PROD_IP" \
+  --set dbPreviewIp="$DB_PREVIEW_IP" \
   --set breakglassSourceCidr="$BREAKGLASS_CIDR" \
   --set-json cloudflareIpv4Cidrs="$CF_IPV4_JSON" \
   --set-json cloudflareIpv6Cidrs="$CF_IPV6_JSON" \
