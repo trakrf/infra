@@ -90,3 +90,12 @@ backups:
   # K8s SA name in the chart's namespace. Must match the WI subject in
   # terraform/gcp/cnpg_backups.tf (trakrf-system/cnpg-backups).
   serviceAccountName: cnpg-backups
+
+# External LoadBalancer Service for the preview CNPG primary so external
+# psql clients can reach it for FDW pull-migration development.
+# Disabled by default; the GKE root chart overlay sets enabled=true and
+# wires loadBalancerIP + sourceRanges from tofu outputs.
+externalPreview:
+  enabled: false
+  loadBalancerIP: ""
+  sourceRanges: []

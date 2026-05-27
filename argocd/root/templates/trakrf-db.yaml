@@ -5,10 +5,19 @@
        Ignoring fields owned by it filters out all operator-filled
        defaults (podAntiAffinityType, connectionLimit, inherit, etc.). */ -}}
 {{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - manager\n" -}}
-{{- /* Inline values: pass cluster-specific backup wiring (bucket name +
-       GSA email) into the trakrf-db chart. Blank strings on non-GKE
-       clusters are fine — backups.enabled stays false there. */ -}}
-{{- $inline := printf "backups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" .Values.cnpgBackupBucket .Values.cnpgBackupsGcpServiceAccountEmail -}}
+{{- /* Inline values for the trakrf-db chart:
+       1. backups.{bucket,gcpServiceAccountEmail} — wired on every cluster.
+          Blank strings on non-GKE are fine; the chart's backups.enabled
+          defaults to false and is only flipped on in values-gke.yaml.
+       2. externalPreview — GKE-only LoadBalancer Service for the preview
+          CNPG primary so platform CC can iterate on the M3 FDW pull
+          migration with direct psql access. IP comes from the Tofu
+          static address (db_preview_ip); source allowlist reuses the
+          same breakglass dyn-DNS CIDR that gates the preview ingress. */ -}}
+{{- $values := printf "backups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" .Values.cnpgBackupBucket .Values.cnpgBackupsGcpServiceAccountEmail -}}
+{{- if eq .Values.cluster "gke" -}}
+{{- $values = printf "%sexternalPreview:\n  enabled: true\n  loadBalancerIP: %q\n  sourceRanges:\n    - %q\n" $values .Values.dbPreviewIp .Values.breakglassSourceCidr -}}
+{{- end -}}
 {{- include "trakrf.application" (dict
   "name" "trakrf-db"
   "path" "helm/trakrf-db"
@@ -18,6 +27,6 @@
   "repoURL" .Values.repoURL
   "targetRevision" .Values.targetRevision
   "destination" .Values.destination
-  "inlineValues" $inline
+  "inlineValues" $values
   "ignoreDifferences" $ignore
 ) }}

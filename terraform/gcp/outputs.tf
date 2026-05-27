@@ -114,3 +114,11 @@ output "cnpg_backups_service_account_email" {
   description = "GCP SA email — used as the iam.gke.io/gcp-service-account annotation on the trakrf-system/cnpg-backups KSA"
   value       = google_service_account.cnpg_backups.email
 }
+
+# Preview CNPG primary external IP. Consumed by:
+#   - terraform/gcp/dns.tf A record for db.preview.gke.trakrf.id
+#   - scripts/apply-root-app.sh -> argocd/root values -> trakrf-db preview LB IP
+output "db_preview_ip" {
+  description = "Static IP for the preview CNPG primary LoadBalancer (db.preview.gke.trakrf.id)"
+  value       = google_compute_address.db_preview.address
+}

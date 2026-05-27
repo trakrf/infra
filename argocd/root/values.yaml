@@ -48,6 +48,11 @@ cnpgBackupsGcpServiceAccountEmail: ""
 mqttPreviewIp: ""
 mqttProdIp: ""
 
+# TRA-810 — Preview CNPG primary LB IP (Tofu-injected). GKE-only; consumed
+# by argocd/root/templates/trakrf-db.yaml to enable the external Service.
+# Hostname is fixed `db.preview.gke.trakrf.id` (no per-env placeholder).
+dbPreviewIp: ""
+
 # Preview ingress origin-lock — populated by scripts/apply-root-app.sh.
 # breakglassSourceCidr: resolved at apply time from a dyn DNS hostname
 #   (currently opsumo-austin.asuscomm.com); formatted as <ip>/32.

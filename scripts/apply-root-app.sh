@@ -39,6 +39,7 @@ case "$CLUSTER" in
     MQTT_PROD_IP=""
     CNPG_BACKUP_BUCKET=""
     CNPG_BACKUPS_GSA_EMAIL=""
+    DB_PREVIEW_IP=""
     ;;
   gke)
     TF_DIR="terraform/gcp"
@@ -58,6 +59,7 @@ case "$CLUSTER" in
     MQTT_PROD_IP=$(tofu -chdir="$TF_DIR" output -raw mqtt_prod_ip)
     CNPG_BACKUP_BUCKET=$(tofu -chdir="$TF_DIR" output -raw cnpg_backup_bucket)
     CNPG_BACKUPS_GSA_EMAIL=$(tofu -chdir="$TF_DIR" output -raw cnpg_backups_service_account_email)
+    DB_PREVIEW_IP=$(tofu -chdir="$TF_DIR" output -raw db_preview_ip)
     ;;
   eks)
     CLIENT_ID=""
@@ -74,6 +76,7 @@ case "$CLUSTER" in
     MQTT_PROD_IP=""
     CNPG_BACKUP_BUCKET=""
     CNPG_BACKUPS_GSA_EMAIL=""
+    DB_PREVIEW_IP=""
     ;;
   *)
     echo "warning: no tofu output wiring for cluster '$CLUSTER'; passing blank values" >&2
@@ -91,6 +94,7 @@ case "$CLUSTER" in
     MQTT_PROD_IP=""
     CNPG_BACKUP_BUCKET=""
     CNPG_BACKUPS_GSA_EMAIL=""
+    DB_PREVIEW_IP=""
     ;;
 esac
 
@@ -146,6 +150,7 @@ helm upgrade --install trakrf-root argocd/root \
   --set mqttProdIp="$MQTT_PROD_IP" \
   --set cnpgBackupBucket="$CNPG_BACKUP_BUCKET" \
   --set cnpgBackupsGcpServiceAccountEmail="$CNPG_BACKUPS_GSA_EMAIL" \
+  --set dbPreviewIp="$DB_PREVIEW_IP" \
   --set breakglassSourceCidr="$BREAKGLASS_CIDR" \
   --set-json cloudflareIpv4Cidrs="$CF_IPV4_JSON" \
   --set-json cloudflareIpv6Cidrs="$CF_IPV6_JSON" \

@@ -1,0 +1,58 @@
+{{- /*
+  TRA-810 — External LoadBalancer Service for the preview CNPG primary.
+  Exists so external psql clients (specifically: platform CC iterating on
+  the M3 FDW pull migration) can reach preview Postgres without a
+  port-forward.
+
+  Preview-only by structure: only renders when externalPreview.enabled is
+  true AND a loadBalancerIP is set. The root chart wires both in on GKE
+  only — prod and non-GKE overlays skip this path entirely.
+
+  Selector matches CNPG's auto-generated `-rw` Service (cluster + primary
+  role), so the LB always tracks whichever instance is currently the
+  primary. We do NOT touch the operator-managed `-rw/-ro/-r` Services.
+
+  TLS is CNPG's operator-managed server cert (signed by trakrf-db-ca).
+  Clients connect with `sslmode=verify-ca sslrootcert=<ca-cert>` after
+  pulling the CA from the trakrf-db-ca Secret in this namespace.
+
+  Source IP allowlist via loadBalancerSourceRanges — populated from the
+  same breakglass dyn-DNS CIDR the preview ingress uses (root chart
+  resolves at apply time, see scripts/apply-root-app.sh).
+*/}}
+{{- if and .Values.externalPreview.enabled .Values.externalPreview.loadBalancerIP }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.fullnameOverride | default "trakrf-db" }}-preview-external
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: trakrf-db
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: trakrf
+    app.kubernetes.io/component: preview-external
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+  annotations:
+    # GCP networking: ensure regional LB, not global.
+    cloud.google.com/load-balancer-type: "External"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .Values.externalPreview.loadBalancerIP | quote }}
+  {{- with .Values.externalPreview.sourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  # externalTrafficPolicy: Local preserves the client source IP for the
+  # loadBalancerSourceRanges check at the node level. Without this, the
+  # node masquerades source IPs and the allowlist is meaningless.
+  externalTrafficPolicy: Local
+  ports:
+    - name: postgres
+      port: 5432
+      protocol: TCP
+      targetPort: 5432
+  selector:
+    cnpg.io/cluster: {{ .Values.fullnameOverride | default "trakrf-db" }}
+    cnpg.io/instanceRole: primary
+{{- end }}
