@@ -21,3 +21,5 @@ backups:
   enabled: true
   # bucket + gcpServiceAccountEmail are injected by the root chart at
   # install time from tofu outputs.
+  cluster:
+    enabled: true

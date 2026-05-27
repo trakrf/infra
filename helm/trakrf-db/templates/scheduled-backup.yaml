@@ -1,0 +1,30 @@
+{{- /*
+  ScheduledBackup — CNPG's recurring base-backup CR. Method
+  `barmanObjectStore` tells CNPG to upload to the destination configured
+  on the Cluster's spec.backup.barmanObjectStore (see cluster.yaml).
+
+  Schedule field is robfig/cron with a seconds field (6-field). We
+  prefix the user-supplied 5-field schedule with "0 " so values stay in
+  the familiar 5-field form everyone is used to.
+
+  immediate: true triggers a backup right after the resource is applied
+  — useful on first install so a base backup exists immediately and we
+  don't wait 24h for the first scheduled run.
+
+  Gated on .Values.backups.cluster.enabled so non-GKE overlays render
+  nothing here.
+*/ -}}
+{{- if .Values.backups.cluster.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ printf "%s-base" (.Values.fullnameOverride | default "trakrf-db") }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ printf "0 %s" .Values.backups.cluster.baseBackupSchedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ .Values.fullnameOverride | default "trakrf-db" }}
+  immediate: true
+  method: barmanObjectStore
+{{- end }}

@@ -92,6 +92,28 @@ backups:
   # terraform/gcp/cnpg_backups.tf (trakrf-system/cnpg-backups).
   serviceAccountName: cnpg-backups
 
+  # Phase 2: CNPG-native continuous WAL archiving + scheduled base
+  # backups to the same bucket as Phase 1. Off by default; gated
+  # separately from Phase 1 so the two layers can be flipped
+  # independently. Requires the WI binding in terraform/gcp/cnpg_backups.tf
+  # for the cluster's pod SA (google_service_account_iam_member.cnpg_backups_wi_cluster).
+  cluster:
+    enabled: false
+    # Path prefix CNPG writes under inside the bucket. Defaults to the
+    # Cluster name; pinning it explicitly makes WAL/base paths stable
+    # across Cluster renames.
+    serverName: trakrf-db
+    # Schedule for the recurring base backup (5-field cron). The
+    # ScheduledBackup template prefixes "0 " to make a 6-field
+    # seconds-included cron, which is what CNPG expects (robfig/cron).
+    # Staggered 30 min off Phase 1's pg_dump schedule so the two heavy
+    # operations don't compete on the single-instance primary.
+    baseBackupSchedule: "30 9 * * *"
+    # CNPG-native retention. Format "<N>[dwm]". CNPG deletes base
+    # backups + their WAL chain atomically. Do NOT add a GCS lifecycle
+    # rule for the CNPG paths — it would break WAL chains and PITR.
+    retentionPolicy: "14d"
+
 # External LoadBalancer Service for the preview CNPG primary so external
 # psql clients can reach it for FDW pull-migration development.
 # Disabled by default; the GKE root chart overlay sets enabled=true and

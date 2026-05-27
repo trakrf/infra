@@ -332,3 +332,117 @@ db-restore-test ENV="preview":
       psql -U postgres -c "DROP DATABASE \"${scratch}\""
 
     echo "Restore proof complete for ENV={{ ENV }}."
+
+# Manually trigger an ad-hoc CNPG Backup CR against the trakrf-db
+# cluster. Useful for first-install verification (don't wait for the
+# scheduled run) or for taking a guaranteed-fresh base backup before a
+# risky operation.
+#
+# Usage: just db-pitr-trigger-base
+db-pitr-trigger-base:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # kubectl apply requires a fixed name; embed a timestamp for uniqueness.
+    name="trakrf-db-manual-$(date -u +%Y%m%d%H%M%S)"
+    kubectl -n trakrf-system apply -f - <<EOF
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Backup
+    metadata:
+      name: ${name}
+      namespace: trakrf-system
+    spec:
+      cluster:
+        name: trakrf-db
+      method: barmanObjectStore
+    EOF
+    echo "Backup CR ${name} submitted. Watch with: kubectl -n trakrf-system get backup -w"
+
+# Proves CNPG PITR by spinning up a scratch Cluster that recovers from
+# the barman object store, optionally to a specific point in time. The
+# scratch cluster always uses the fixed name `trakrf-restore-test` so
+# the static WI binding in terraform/gcp/cnpg_backups.tf fits.
+#
+# Idempotent: pre-deletes any leftover scratch cluster before applying.
+#
+# Usage:
+#   just db-restore-pitr-test               # recover to latest available
+#   just db-restore-pitr-test "2026-05-27T10:30:00Z"
+db-restore-pitr-test TARGET_TIME="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
+    gsa=$(tofu -chdir=terraform/gcp output -raw cnpg_backups_service_account_email)
+    scratch=trakrf-restore-test
+    ns=trakrf-system
+
+    echo "Pre-cleanup: deleting any leftover ${scratch} cluster..."
+    kubectl -n "$ns" delete cluster "$scratch" --ignore-not-found --wait=true
+
+    target_block=""
+    if [[ -n "{{ TARGET_TIME }}" ]]; then
+      target_block=$'\n      recoveryTarget:\n        targetTime: "{{ TARGET_TIME }}"'
+    fi
+
+    echo "Applying scratch Cluster ${scratch} pointing at gs://${bucket}/trakrf-db ..."
+    cat <<EOF | kubectl apply -f -
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    metadata:
+      name: ${scratch}
+      namespace: ${ns}
+    spec:
+      instances: 1
+      imageName: ghcr.io/clevyr/cloudnativepg-timescale:17.2-ts2.18
+      storage:
+        size: 5Gi
+        storageClass: premium-rwo
+      affinity:
+        tolerations:
+          - key: kubernetes.io/arch
+            operator: Equal
+            value: arm64
+            effect: NoSchedule
+      serviceAccountTemplate:
+        metadata:
+          annotations:
+            iam.gke.io/gcp-service-account: ${gsa}
+      bootstrap:
+        recovery:
+          source: trakrf-db-source${target_block}
+      externalClusters:
+        - name: trakrf-db-source
+          barmanObjectStore:
+            destinationPath: gs://${bucket}
+            serverName: trakrf-db
+            googleCredentials:
+              gkeEnvironment: true
+            wal:
+              compression: gzip
+    EOF
+
+    echo "Waiting up to 10 min for scratch cluster to become Ready..."
+    kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout=10m
+
+    pg_pod=$(kubectl -n "$ns" get pod -l cnpg.io/cluster=${scratch},role=primary \
+              -o jsonpath='{.items[0].metadata.name}')
+    test -n "$pg_pod" || { echo "no scratch primary pod found"; exit 1; }
+
+    echo
+    echo "==== databases in recovered cluster ===="
+    kubectl -n "$ns" exec "$pg_pod" -- psql -U postgres -c "\l"
+
+    for db in trakrf_preview trakrf_prod; do
+      echo
+      echo "==== ${db}: trakrf schema rowcounts ===="
+      kubectl -n "$ns" exec "$pg_pod" -- \
+        psql -U postgres -d "$db" -c "\dn" \
+        -c "SELECT schemaname, relname, n_live_tup
+            FROM pg_stat_user_tables
+            WHERE schemaname='trakrf'
+            ORDER BY relname;" || echo "(${db} not present at target time)"
+    done
+
+    echo
+    echo "Tearing down scratch cluster..."
+    kubectl -n "$ns" delete cluster "$scratch" --wait=true
+    echo "PITR restore proof complete."
