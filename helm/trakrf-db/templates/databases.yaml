@@ -1,20 +1,19 @@
 {{- /*
-  One CNPG Database CRD per env entry. The preview DB is already created
-  by initdb; ensure: present reconciles it into the model without dropping.
-  Each Database is owned by its env-specific migrate role so the role can
-  CREATE SCHEMA + GRANT inside its own DB without superuser.
+  Single Database CR per release. Each per-env release manages exactly one
+  Database, owned by its migrate role. databaseReclaimPolicy=retain means
+  deleting this CR leaves the underlying Postgres database intact — combined
+  with the Application's automated.prune=false, this is the load-bearing
+  guardrail against accidental data loss on prune.
 */ -}}
-{{- range $env := .Values.envs }}
----
 apiVersion: postgresql.cnpg.io/v1
 kind: Database
 metadata:
-  name: {{ $env.cnpgDatabaseName | quote }}
-  namespace: {{ $.Release.Namespace }}
+  name: {{ .Values.database.cnpgName | quote }}
+  namespace: {{ .Release.Namespace }}
 spec:
-  name: {{ $env.database | quote }}
-  owner: {{ $env.migrateRole | quote }}
+  name: {{ .Values.database.name | quote }}
+  owner: {{ .Values.roles.migrate | quote }}
   cluster:
-    name: {{ $.Values.fullnameOverride | default "trakrf-db" }}
+    name: {{ .Values.fullnameOverride | default "trakrf-db" }}
   ensure: present
-{{- end }}
+  databaseReclaimPolicy: retain

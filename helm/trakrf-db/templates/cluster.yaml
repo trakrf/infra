@@ -7,26 +7,6 @@ spec:
   instances: {{ .Values.cluster.instances }}
   imageName: {{ .Values.cluster.imageName | quote }}
 
-  # The init-grants Job needs superuser to issue per-env grants that the
-  # migrate role cannot self-grant — currently `GRANT USAGE ON FOREIGN DATA
-  # WRAPPER postgres_fdw`. CNPG creates a `<cluster>-superuser` basic-auth
-  # Secret when this is true.
-  enableSuperuserAccess: true
-
-  {{- /*
-    Annotate the CNPG pod ServiceAccount with the GCP SA email so the
-    cluster pods can write WAL + base backups via Workload Identity.
-    The annotation is harmless without Phase 2 (.Values.backups.cluster.*);
-    we gate on the same Phase-1 toggle that also requires the GSA email
-    to be set, which keeps the chart simple.
-  */ -}}
-  {{- if .Values.backups.enabled }}
-  serviceAccountTemplate:
-    metadata:
-      annotations:
-        iam.gke.io/gcp-service-account: {{ required "backups.gcpServiceAccountEmail must be set when backups.enabled=true" .Values.backups.gcpServiceAccountEmail | quote }}
-  {{- end }}
-
   postgresql:
     shared_preload_libraries:
       {{- range .Values.postgresql.sharedPreloadLibraries }}
@@ -39,74 +19,41 @@ spec:
 
   bootstrap:
     initdb:
-      database: {{ .Values.bootstrap.initdb.database }}
-      owner: {{ .Values.bootstrap.initdb.owner | quote }}
-      {{- with .Values.bootstrap.initdb.postInitTemplateSQL }}
+      database: {{ .Values.database.name | quote }}
+      owner: {{ .Values.roles.migrate | quote }}
       postInitTemplateSQL:
-        {{- range . }}
-        - {{ . | quote }}
-        {{- end }}
-      {{- end }}
-      {{- with .Values.bootstrap.initdb.postInitSQL }}
-      postInitSQL:
-        {{- range . }}
-        - {{ . | quote }}
-        {{- end }}
-      {{- end }}
-      {{- with .Values.bootstrap.initdb.postInitApplicationSQL }}
-      postInitApplicationSQL:
-        {{- range . }}
-        - {{ . | quote }}
-        {{- end }}
-      {{- end }}
+        - CREATE EXTENSION IF NOT EXISTS timescaledb
 
   managed:
     roles:
-      {{- range .Values.envs }}
-      - name: {{ .appRole | quote }}
+      - name: {{ .Values.roles.app | quote }}
         ensure: present
         login: true
         superuser: false
         createdb: false
         createrole: false
         passwordSecret:
-          name: {{ .appSecret | quote }}
-      - name: {{ .migrateRole | quote }}
+          name: {{ .Values.secrets.app | quote }}
+      - name: {{ .Values.roles.migrate | quote }}
         ensure: present
         login: true
         superuser: false
         createdb: true
         createrole: false
         passwordSecret:
-          name: {{ .migrateSecret | quote }}
-      {{- end }}
+          name: {{ .Values.secrets.migrate | quote }}
 
   storage:
     size: {{ .Values.storage.size }}
     storageClass: {{ required "storage.class must be set in values-<cluster>.yaml" .Values.storage.class | quote }}
 
-  {{- if or .Values.affinity.nodeSelector .Values.affinity.tolerations }}
-  affinity:
-    {{- with .Values.affinity.nodeSelector }}
-    nodeSelector:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
-    {{- with .Values.affinity.tolerations }}
-    tolerations:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
+  {{- if .Values.backups.enabled }}
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        iam.gke.io/gcp-service-account: {{ required "backups.gcpServiceAccountEmail must be set when backups.enabled=true" .Values.backups.gcpServiceAccountEmail | quote }}
   {{- end }}
 
-  {{- /*
-    CNPG continuous WAL archiving + scheduled base backups via the
-    in-tree barmanObjectStore. WI is supplied by the
-    serviceAccountTemplate annotation above. Retention is CNPG-native
-    (does NOT rely on the GCS lifecycle rule), so WAL chains stay
-    intact for PITR.
-
-    In-tree barmanObjectStore is deprecated upstream in favor of the
-    plugin-barman-cloud CNPG-i model — migration is a separate ticket.
-  */ -}}
   {{- if .Values.backups.cluster.enabled }}
   backup:
     retentionPolicy: {{ .Values.backups.cluster.retentionPolicy | quote }}
@@ -121,4 +68,16 @@ spec:
         compression: gzip
         immediateCheckpoint: true
         jobs: 2
+  {{- end }}
+
+  {{- if or .Values.affinity.nodeSelector .Values.affinity.tolerations }}
+  affinity:
+    {{- with .Values.affinity.nodeSelector }}
+    nodeSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.affinity.tolerations }}
+    tolerations:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   {{- end }}

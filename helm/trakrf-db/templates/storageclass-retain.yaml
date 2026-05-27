@@ -1,0 +1,18 @@
+{{- /*
+  premium-rwo-retain — clone of GKE's built-in premium-rwo (pd-ssd) with
+  reclaimPolicy: Retain so PVs survive PVC deletion. The new dedicated
+  CNPG Clusters use this SC; setting createRetainClass=true on exactly one
+  release means the cluster-scoped SC is created exactly once.
+*/ -}}
+{{- if .Values.storage.createRetainClass }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: premium-rwo-retain
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: pd-ssd
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+{{- end }}

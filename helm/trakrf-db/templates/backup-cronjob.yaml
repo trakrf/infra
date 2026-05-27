@@ -1,48 +1,17 @@
 {{- /*
-  Per-env logical backup CronJob — runs pg_dump against each env DB
-  and uploads the result to GCS.
-
-  Two-container pattern:
-    initContainer "pg-dump" : CNPG postgres image (multi-arch); pg_dump
-                              -Fc into /dump/dump.pgdump on a shared
-                              emptyDir. Auth via the env's managed
-                              migrate role secret (same Secret the
-                              init-grants Job uses).
-    main container "upload"  : curlimages/curl (multi-arch); uploads to
-                               gs://<bucket>/<env>/YYYY/MM/DD/HHMM.pgdump
-                               via the GCS JSON API "simple media
-                               upload". Auth is a short-lived OAuth
-                               access token fetched from the GKE
-                               metadata server using Workload Identity
-                               (the KSA cnpg-backups is annotated with
-                               the GCP SA).
-
-  Why curl + REST and not the gcloud CLI: Google does not publish a
-  multi-arch google/cloud-sdk image. On the ARM GKE primary node, the
-  amd64-only image crashes with "exec format error". curlimages/curl
-  is published for arm64.
-
-  Why init+main and not two main containers: K8s requires AT LEAST one
-  container in `containers`, and a Job is "succeeded" when all
-  containers exit 0. Init containers run sequentially first, which is
-  exactly the ordering we want (dump must finish before upload).
-
-  Upload size limit: GCS simple media upload caps at 5 MB; dumps are
-  ~100 KB today and would not approach that for a very long time. If
-  the dump ever exceeds ~4 MB, switch the upload command to a resumable
-  upload (https://cloud.google.com/storage/docs/uploading-objects).
+  Logical backup CronJob — pg_dump → GCS via WI + curl + JSON API.
+  Single-env shape: one CronJob per release, named after the cluster.
+  Uploads to gs://<bucket>/<dumpPrefix>/YYYY/MM/DD/HHMM.pgdump so the existing
+  GCS lifecycle rule (matches_prefix=["preview/","prod/"]) keeps applying.
 */ -}}
 {{- if .Values.backups.enabled }}
-{{- $root := . -}}
-{{- range $env := .Values.envs }}
----
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ printf "pg-dump-%s" $env.name }}
-  namespace: {{ $root.Release.Namespace }}
+  name: pg-dump
+  namespace: {{ .Release.Namespace }}
 spec:
-  schedule: {{ $root.Values.backups.schedule | quote }}
+  schedule: {{ .Values.backups.schedule | quote }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -52,13 +21,13 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
-          serviceAccountName: {{ $root.Values.backups.serviceAccountName | quote }}
+          serviceAccountName: {{ .Values.backups.serviceAccountName | quote }}
           automountServiceAccountToken: true
-          {{- with $root.Values.affinity.nodeSelector }}
+          {{- with .Values.affinity.nodeSelector }}
           nodeSelector:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with $root.Values.affinity.tolerations }}
+          {{- with .Values.affinity.tolerations }}
           tolerations:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -67,25 +36,25 @@ spec:
               emptyDir: {}
           initContainers:
             - name: pg-dump
-              image: {{ $root.Values.backups.pgDumpImage | quote }}
+              image: {{ .Values.backups.pgDumpImage | quote }}
               env:
                 - name: PGHOST
-                  value: {{ $root.Values.initGrantsJob.host | quote }}
+                  value: {{ printf "%s-rw" (.Values.fullnameOverride | default "trakrf-db") | quote }}
                 - name: PGPORT
                   value: "5432"
                 - name: PGSSLMODE
                   value: require
                 - name: PGDATABASE
-                  value: {{ $env.database | quote }}
+                  value: {{ .Values.database.name | quote }}
                 - name: PGUSER
                   valueFrom:
                     secretKeyRef:
-                      name: {{ $env.migrateSecret | quote }}
+                      name: {{ .Values.secrets.migrate | quote }}
                       key: username
                 - name: PGPASSWORD
                   valueFrom:
                     secretKeyRef:
-                      name: {{ $env.migrateSecret | quote }}
+                      name: {{ .Values.secrets.migrate | quote }}
                       key: password
               command:
                 - /bin/sh
@@ -99,30 +68,25 @@ spec:
                   mountPath: /dump
           containers:
             - name: upload
-              image: {{ $root.Values.backups.uploadImage | quote }}
+              image: {{ .Values.backups.uploadImage | quote }}
               env:
-                - name: ENV_NAME
-                  value: {{ $env.name | quote }}
+                - name: DUMP_PREFIX
+                  value: {{ .Values.backups.dumpPrefix | quote }}
                 - name: BUCKET
-                  value: {{ required "backups.bucket must be set when backups.enabled=true" $root.Values.backups.bucket | quote }}
+                  value: {{ required "backups.bucket must be set when backups.enabled=true" .Values.backups.bucket | quote }}
               command:
                 - /bin/sh
                 - -c
                 - |
                   set -eu
                   ts=$(date -u +%Y/%m/%d/%H%M)
-                  object="${ENV_NAME}/${ts}.pgdump"
+                  object="${DUMP_PREFIX}/${ts}.pgdump"
                   echo "Uploading /dump/dump.pgdump to gs://${BUCKET}/${object}"
-
-                  # Fetch a Workload Identity access token from the GKE
-                  # metadata server. No jq in this image; extract with sed.
                   token=$(curl -sSf \
                     -H "Metadata-Flavor: Google" \
                     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
                     | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
                   test -n "${token}" || { echo "failed to fetch WI access token"; exit 1; }
-
-                  # GCS JSON API simple media upload.
                   curl -sSf -X POST \
                     -H "Authorization: Bearer ${token}" \
                     -H "Content-Type: application/octet-stream" \
@@ -133,5 +97,4 @@ spec:
               volumeMounts:
                 - name: dump
                   mountPath: /dump
-{{- end }}
 {{- end }}
