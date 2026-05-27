@@ -1,7 +1,10 @@
 {{- /*
   One trakrf-ingester Application per env. Mirrors the trakrf-backend
-  pattern — same per-env DB credentials, same trakrf-system DB host,
-  same role override. The ingester has no migrate Job and no ingress.
+  pattern — same per-env DB credentials, per-env DB host (preview lives
+  on its dedicated trakrf-db-preview Cluster in trakrf-preview ns; prod
+  is still on the shared trakrf-db Cluster in trakrf-system until the
+  prod cutover ticket retires it). The ingester has no migrate Job and
+  no ingress.
 
   TRA-828: each env also gets its own broker hostname + LB IP injected
   here. On non-GKE clusters mqttPreviewIp/mqttProdIp are blank and the
@@ -9,9 +12,13 @@
   values-eks.yaml), so the unused broker.* values are harmless.
 */ -}}
 {{- range $env := list "preview" "prod" }}
+{{- $dbHost := "trakrf-db-rw.trakrf-system" }}
+{{- if eq $env "preview" }}
+{{- $dbHost = "trakrf-db-preview-rw.trakrf-preview" }}
+{{- end }}
 {{- $ipKey := printf "mqtt%sIp" (title $env) -}}
 {{- $ip := index $.Values $ipKey | default "" -}}
-{{- $values := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: trakrf-db-rw.trakrf-system\nmqtt:\n  clientId: trakrf-ingester-%s-%s\nbroker:\n  hostname: mqtt.%s.gke.trakrf.id\n  loadBalancerIP: %s\n" $env $env $env $.Values.cluster $env $env $ip }}
+{{- $values := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: %s\nmqtt:\n  clientId: trakrf-ingester-%s-%s\nbroker:\n  hostname: mqtt.%s.gke.trakrf.id\n  loadBalancerIP: %s\n" $env $env $env $dbHost $.Values.cluster $env $env $ip }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-ingester-%s" $env)
