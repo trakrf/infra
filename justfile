@@ -127,6 +127,8 @@ cnpg-bootstrap CLUSTER:
 #
 # Passwords come from .env.local using openssl rand -hex (per
 # feedback_db_password_alphabet — base64 / + chars break URL DSNs).
+
+# Apply CNPG role credential Secrets (preview native, prod reflector-mirrored)
 db-secrets:
     @kubectl create namespace trakrf-system --dry-run=client -o yaml | kubectl apply -f -
     @kubectl create namespace trakrf-preview --dry-run=client -o yaml | kubectl apply -f -
