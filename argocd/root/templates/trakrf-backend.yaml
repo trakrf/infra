@@ -17,7 +17,7 @@
 {{- if eq $env "preview" }}
 {{- $dbHost = "trakrf-db-preview-rw.trakrf-preview" }}
 {{- end }}
-{{- $base := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: %s\nmigrate:\n  database: trakrf_%s\n  user: trakrf-migrate-%s\n  credentialsSecret: trakrf-migrate-%s-credentials\n  host: %s\nconfig:\n  appEnv: %s\n" $env $env $env $dbHost $env $env $env $dbHost $env }}
+{{- $base := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmigrate:\n  database: trakrf\n  user: trakrf-migrate\n  credentialsSecret: trakrf-migrate-credentials\n  host: %s\nconfig:\n  appEnv: %s\n" $dbHost $dbHost $env }}
 {{- $ingress := "ingress:\n  enabled: false\n" }}
 {{- if eq $env "preview" }}
 {{- $ingress = include "trakrf-backend.previewIngressValues" $ }}

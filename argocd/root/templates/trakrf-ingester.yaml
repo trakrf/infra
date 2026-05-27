@@ -18,7 +18,7 @@
 {{- end }}
 {{- $ipKey := printf "mqtt%sIp" (title $env) -}}
 {{- $ip := index $.Values $ipKey | default "" -}}
-{{- $values := printf "database:\n  name: trakrf_%s\n  user: trakrf-app-%s\n  credentialsSecret: trakrf-app-%s-credentials\n  host: %s\nmqtt:\n  clientId: trakrf-ingester-%s-%s\nbroker:\n  hostname: mqtt.%s.gke.trakrf.id\n  loadBalancerIP: %s\n" $env $env $env $dbHost $.Values.cluster $env $env $ip }}
+{{- $values := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmqtt:\n  clientId: trakrf-ingester-%s-%s\nbroker:\n  hostname: mqtt.%s.gke.trakrf.id\n  loadBalancerIP: %s\n" $dbHost $.Values.cluster $env $env $ip }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-ingester-%s" $env)
