@@ -35,6 +35,7 @@ resource "google_storage_bucket" "cnpg_backups" {
       matches_prefix = [
         "trakrf-db/dump/",
         "trakrf-db-preview/dump/",
+        "trakrf-db-prod/dump/",
         "preview/",
         "prod/",
       ]
@@ -111,4 +112,19 @@ resource "google_service_account_iam_member" "cnpg_backups_wi_pgdump_preview" {
   service_account_id = google_service_account.cnpg_backups.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-preview/cnpg-backups]"
+}
+
+# CNPG prod Cluster pods (phase-2 WAL archiving + base backups).
+# Cluster's pod SA is named after the Cluster (trakrf-db-prod).
+resource "google_service_account_iam_member" "cnpg_backups_wi_cluster_prod" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-prod/trakrf-db-prod]"
+}
+
+# Prod pg_dump CronJob KSA (phase-1 logical backup).
+resource "google_service_account_iam_member" "cnpg_backups_wi_pgdump_prod" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-prod/cnpg-backups]"
 }

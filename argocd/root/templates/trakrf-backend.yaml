@@ -5,8 +5,8 @@
   tenant, etc.) is a values change only.
 
   Preview gets ingress + IPAllowList middlewares wired up via the
-  trakrf-backend.previewIngressValues helper. Prod stays ingress-off
-  pending its own ingress ticket.
+  trakrf-backend.ingressValues helper. Prod stays ingress-off for the
+  CF grey-cloud route; the gke-direct route is rendered when ingressEnabled.
 
   On GKE, automatic image-tag promotion for preview is handled by an
   ImageUpdater CR (see trakrf-backend-image-updater.yaml). The chart 1.2.x
@@ -17,7 +17,13 @@
 {{- $base := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmigrate:\n  database: trakrf\n  user: trakrf-migrate\n  credentialsSecret: trakrf-migrate-credentials\n  host: %s\nconfig:\n  appEnv: %s\n" $cfg.dbHost $cfg.dbHost $env }}
 {{- $ingress := "ingress:\n  enabled: false\n" }}
 {{- if $cfg.ingressEnabled }}
-{{- $ingress = include "trakrf-backend.previewIngressValues" $ }}
+{{- $ingressCtx := dict
+      "env" $env
+      "appTrakrfIdRouteEnabled" (eq $env "preview")
+      "breakglassSourceCidr" $.Values.breakglassSourceCidr
+      "cloudflareIpv4Cidrs" $.Values.cloudflareIpv4Cidrs
+      "cloudflareIpv6Cidrs" $.Values.cloudflareIpv6Cidrs }}
+{{- $ingress = include "trakrf-backend.ingressValues" $ingressCtx }}
 {{- end }}
 {{- $values := printf "%s%s" $base $ingress }}
 ---

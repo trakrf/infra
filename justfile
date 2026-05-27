@@ -121,52 +121,37 @@ cnpg-bootstrap CLUSTER:
 # trakrf-migrate) and references the same Secret names (trakrf-app-credentials,
 # trakrf-migrate-credentials) — the K8s namespace is what disambiguates them.
 #
-# Preview: Secrets live natively in trakrf-preview alongside the Cluster +
-# apps. No reflector annotations needed.
-#
-# Prod (until the prod-half ticket co-locates the prod Cluster in trakrf-prod):
-# Secrets live in trakrf-system (shared Cluster's namespace) and reflector
-# mirrors them into trakrf-prod where backend + ingester run.
+# Both env Secrets live natively in their cluster's namespace
+# (trakrf-preview / trakrf-prod). No reflector annotations — the prod Cluster
+# is now co-located in trakrf-prod, so the cross-namespace mirror that the
+# shared-cluster topology needed is gone.
 #
 # Passwords come from .env.local using openssl rand -hex (per
 # feedback_db_password_alphabet — base64 / + chars break URL DSNs).
 
-# Apply CNPG role credential Secrets (preview native, prod reflector-mirrored)
+# Apply CNPG role credential Secrets (both envs native, no reflector)
 db-secrets:
-    @kubectl create namespace trakrf-system --dry-run=client -o yaml | kubectl apply -f -
     @kubectl create namespace trakrf-preview --dry-run=client -o yaml | kubectl apply -f -
     @kubectl create namespace trakrf-prod --dry-run=client -o yaml | kubectl apply -f -
     @test -n "${TRAKRF_APP_DB_PASSWORD_PREVIEW:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD_PREVIEW not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_APP_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
-    @just _db-secret app     trakrf-preview ""             "${TRAKRF_APP_DB_PASSWORD_PREVIEW}"
-    @just _db-secret app     trakrf-system  "trakrf-prod"  "${TRAKRF_APP_DB_PASSWORD_PROD}"
-    @just _db-secret migrate trakrf-preview ""             "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW}"
-    @just _db-secret migrate trakrf-system  "trakrf-prod"  "${TRAKRF_MIGRATE_DB_PASSWORD_PROD}"
-    @echo "Secrets applied. Preview: native in trakrf-preview. Prod: reflector-mirrored into trakrf-prod."
+    @just _db-secret app     trakrf-preview "${TRAKRF_APP_DB_PASSWORD_PREVIEW}"
+    @just _db-secret app     trakrf-prod    "${TRAKRF_APP_DB_PASSWORD_PROD}"
+    @just _db-secret migrate trakrf-preview "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW}"
+    @just _db-secret migrate trakrf-prod    "${TRAKRF_MIGRATE_DB_PASSWORD_PROD}"
+    @echo "Secrets applied. Both envs native in their namespaces (no reflector)."
 
 # Helper: create one CNPG role credential Secret.
-#   ROLE   : "app" | "migrate"          → produces Secret `trakrf-<ROLE>-credentials`
-#   NS     : namespace to create the Secret in
-#   REFLECT: target namespace for reflector mirroring; empty disables annotations
-#   PW     : password
-_db-secret ROLE NS REFLECT PW:
+#   ROLE : "app" | "migrate"   → produces Secret `trakrf-<ROLE>-credentials`
+#   NS   : namespace to create the Secret in
+#   PW   : password
+_db-secret ROLE NS PW:
     @kubectl create secret generic trakrf-{{ROLE}}-credentials -n {{NS}} \
       --from-literal=username=trakrf-{{ROLE}} \
       --from-literal=password="{{PW}}" \
       --dry-run=client -o yaml | kubectl apply -f -
-    @if [ -n "{{REFLECT}}" ]; then \
-       kubectl annotate --overwrite secret trakrf-{{ROLE}}-credentials -n {{NS}} \
-         reflector.v1.k8s.emberstack.com/reflection-allowed=true \
-         reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
-         reflector.v1.k8s.emberstack.com/reflection-auto-namespaces={{REFLECT}}; \
-     else \
-       kubectl annotate --overwrite secret trakrf-{{ROLE}}-credentials -n {{NS}} \
-         reflector.v1.k8s.emberstack.com/reflection-allowed- \
-         reflector.v1.k8s.emberstack.com/reflection-auto-enabled- \
-         reflector.v1.k8s.emberstack.com/reflection-auto-namespaces- 2>/dev/null || true; \
-     fi
 
 # Create the Mosquitto broker auth Secret in trakrf-system with reflector
 # annotations so it mirrors into trakrf-preview / trakrf-prod. Run BEFORE the

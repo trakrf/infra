@@ -25,15 +25,12 @@ namespaces:
 # values addition only — no template edits.
 #
 # dbHost                       — backend/ingester DSN host (`<service>.<ns>`).
-#                                Prod resolves to the shared Cluster in
-#                                trakrf-system; will flip when prod-half
-#                                stands up a dedicated Cluster.
+#                                Each env resolves to its own dedicated Cluster
+#                                in its own namespace.
 # ingressEnabled               — gates the preview-style ingress + IPAllowList.
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
-#                                Application entirely. Prod is off until the
-#                                prod-half ticket stands up a dedicated
-#                                Cluster in the trakrf-prod ns.
+#                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
 # dbCluster.namespace          — where the Cluster Application installs.
 # dbCluster.createRetainClass  — true on exactly one release (creates the
@@ -53,13 +50,13 @@ envs:
       createRetainClass: true
       externalIp: ""
   prod:
-    dbHost: trakrf-db-rw.trakrf-system
-    ingressEnabled: false
+    dbHost: trakrf-db-prod-rw.trakrf-prod
+    ingressEnabled: true
     mqttIp: ""
     dbCluster:
-      enabled: false
-      fullnameOverride: trakrf-db
-      namespace: trakrf-system
+      enabled: true
+      fullnameOverride: trakrf-db-prod
+      namespace: trakrf-prod
       createRetainClass: false
       externalIp: ""
 
