@@ -85,3 +85,18 @@ resource "google_service_account_iam_member" "cnpg_backups_wi_restore_test" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-system/trakrf-restore-test]"
 }
+
+# CNPG preview Cluster pods (phase-2 WAL archiving + base backups).
+# Cluster's pod SA is named after the Cluster (trakrf-db-preview).
+resource "google_service_account_iam_member" "cnpg_backups_wi_cluster_preview" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-preview/trakrf-db-preview]"
+}
+
+# Preview pg_dump CronJob KSA (phase-1 logical backup).
+resource "google_service_account_iam_member" "cnpg_backups_wi_pgdump_preview" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-preview/cnpg-backups]"
+}
