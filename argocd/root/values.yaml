@@ -30,6 +30,10 @@ namespaces:
 #                                stands up a dedicated Cluster.
 # ingressEnabled               — gates the preview-style ingress + IPAllowList.
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
+# dbCluster.enabled            — false skips emitting the CNPG Cluster
+#                                Application entirely. Prod is off until the
+#                                prod-half ticket stands up a dedicated
+#                                Cluster in the trakrf-prod ns.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
 # dbCluster.namespace          — where the Cluster Application installs.
 # dbCluster.createRetainClass  — true on exactly one release (creates the
@@ -43,6 +47,7 @@ envs:
     ingressEnabled: true
     mqttIp: ""
     dbCluster:
+      enabled: true
       fullnameOverride: trakrf-db-preview
       namespace: trakrf-preview
       createRetainClass: true
@@ -52,6 +57,7 @@ envs:
     ingressEnabled: false
     mqttIp: ""
     dbCluster:
+      enabled: false
       fullnameOverride: trakrf-db
       namespace: trakrf-system
       createRetainClass: false
