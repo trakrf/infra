@@ -117,3 +117,11 @@ resource "google_dns_record_set" "app_preview_gke" {
   ttl          = 300
   rrdatas      = [google_compute_address.traefik.address]
 }
+
+resource "google_dns_record_set" "app_prod_gke" {
+  managed_zone = google_dns_managed_zone.gke_trakrf_id.name
+  name         = "app.prod.${google_dns_managed_zone.gke_trakrf_id.dns_name}"
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.traefik.address]
+}
