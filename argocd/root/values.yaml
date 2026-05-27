@@ -29,6 +29,13 @@ namespaces:
 #                                in its own namespace.
 # ingressEnabled               — gates the preview-style ingress + IPAllowList.
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
+# imageTag                     — trakrf-backend image tag override. Empty falls
+#                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
+#                                On GKE preview that's intercepted by image-updater
+#                                to track `:preview`; prod uses an explicit static
+#                                pin (e.g. `gke-preprod` during the soak window,
+#                                a semver `v*` for the actual cutover) so no
+#                                image-updater is needed.
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
 #                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
@@ -43,6 +50,7 @@ envs:
     dbHost: trakrf-db-preview-rw.trakrf-preview
     ingressEnabled: true
     mqttIp: ""
+    imageTag: ""
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-preview
@@ -53,6 +61,7 @@ envs:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
     mqttIp: ""
+    imageTag: gke-preprod
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod
