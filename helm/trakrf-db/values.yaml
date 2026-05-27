@@ -25,6 +25,7 @@ bootstrap:
     owner: trakrf-migrate-preview
     postInitTemplateSQL:
       - CREATE EXTENSION IF NOT EXISTS timescaledb
+      - CREATE EXTENSION IF NOT EXISTS postgres_fdw
     postInitSQL: []
     # All schema/grants are applied by per-env post-install Jobs
     # (templates/init-grants-job.yaml) so the bootstrap path and the
