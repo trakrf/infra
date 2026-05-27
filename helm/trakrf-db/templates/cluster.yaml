@@ -59,7 +59,7 @@ spec:
     retentionPolicy: {{ .Values.backups.cluster.retentionPolicy | quote }}
     barmanObjectStore:
       destinationPath: {{ printf "gs://%s" (required "backups.bucket must be set when backups.cluster.enabled=true" .Values.backups.bucket) | quote }}
-      serverName: {{ .Values.backups.cluster.serverName | quote }}
+      serverName: {{ .Values.backups.cluster.serverName | default (.Values.fullnameOverride | default "trakrf-db") | quote }}
       googleCredentials:
         gkeEnvironment: true
       wal:

@@ -70,8 +70,8 @@ spec:
             - name: upload
               image: {{ .Values.backups.uploadImage | quote }}
               env:
-                - name: DUMP_PREFIX
-                  value: {{ .Values.backups.dumpPrefix | quote }}
+                - name: CLUSTER_NAME
+                  value: {{ .Values.fullnameOverride | default "trakrf-db" | quote }}
                 - name: BUCKET
                   value: {{ required "backups.bucket must be set when backups.enabled=true" .Values.backups.bucket | quote }}
               command:
@@ -80,7 +80,7 @@ spec:
                 - |
                   set -eu
                   ts=$(date -u +%Y/%m/%d/%H%M)
-                  object="${DUMP_PREFIX}/${ts}.pgdump"
+                  object="${CLUSTER_NAME}/dump/${ts}.pgdump"
                   echo "Uploading /dump/dump.pgdump to gs://${BUCKET}/${object}"
                   token=$(curl -sSf \
                     -H "Metadata-Flavor: Google" \

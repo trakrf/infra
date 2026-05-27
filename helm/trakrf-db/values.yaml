@@ -2,7 +2,7 @@
 # Managed role passwordSecrets are created out-of-band by `just db-secrets` in
 # the release namespace — do not template them here.
 
-fullnameOverride: trakrf-db          # per-release override sets per-env name
+fullnameOverride: trakrf-db          # per-release override sets per-cluster name
 
 cluster:
   instances: 1
@@ -15,19 +15,20 @@ postgresql:
     timescaledb.license: timescale
     password_encryption: scram-sha-256
 
-# The Postgres database + roles + secrets the chart manages, single-env.
-# Per-release overlay sets these to env-specific names.
+# The Postgres database + roles + secrets the chart manages. With one Cluster
+# per environment, the env is encoded by namespace + fullnameOverride — these
+# names don't need env suffixes.
 database:
-  name: trakrf_preview               # Postgres DB name (underscore form)
-  cnpgName: trakrf-preview           # CNPG Database CRD k8s name (hyphen, DNS-1123)
+  name: trakrf                       # Postgres DB name
+  cnpgName: trakrf                   # CNPG Database CRD k8s name (DNS-1123)
 
 roles:
-  app: trakrf-app-preview
-  migrate: trakrf-migrate-preview
+  app: trakrf-app
+  migrate: trakrf-migrate
 
 secrets:
-  app: trakrf-app-preview-credentials
-  migrate: trakrf-migrate-preview-credentials
+  app: trakrf-app-credentials
+  migrate: trakrf-migrate-credentials
 
 storage:
   size: 10Gi
@@ -41,29 +42,31 @@ affinity:
 # Phase 1 logical per-DB dumps to GCS. Off by default — only the GKE overlay
 # turns it on. Bucket name + GSA email are injected by the root chart from
 # tofu outputs (see argocd/root/templates/trakrf-db*.yaml).
+#
+# GCS path layout: gs://<bucket>/<fullnameOverride>/dump/YYYY/MM/DD/HHMM.pgdump
+# The lifecycle rule on the bucket (terraform/gcp/cnpg_backups.tf) targets
+# the <fullnameOverride>/dump/ prefix so phase-2 paths (base/, wals/) stay
+# CNPG-managed.
 backups:
   enabled: false
   bucket: ""
   gcpServiceAccountEmail: ""
   schedule: "0 9 * * *"              # daily @ 09:00 UTC
-  # Retention is enforced by the GCS lifecycle rule on the bucket
-  # (terraform/gcp/cnpg_backups.tf), scoped to matches_prefix=["preview/","prod/"].
-  # retentionDays here is documentation only.
+  # retentionDays here is documentation only — actual retention comes from
+  # the GCS lifecycle rule.
   retentionDays: 14
   pgDumpImage: ghcr.io/cloudnative-pg/postgresql:17.2
   uploadImage: curlimages/curl:8.10.1
   # K8s SA name in the release's namespace; must match the WI binding subject
   # in terraform/gcp/cnpg_backups.tf for that namespace.
   serviceAccountName: cnpg-backups
-  # GCS path prefix; per-release overrides to "prod" for the shared release.
-  # Kept as a short env name (not the cluster name) so the existing lifecycle
-  # rule matches_prefix=["preview/","prod/"] keeps working unchanged.
-  dumpPrefix: preview
   # Phase 2: CNPG-native continuous WAL archiving + scheduled base backups.
-  # serverName must be unique per Cluster (it's the bucket subdirectory).
+  # serverName defaults to the Cluster name (fullnameOverride). Override
+  # only if you need an explicit bucket subdirectory different from the
+  # K8s resource name.
   cluster:
     enabled: false
-    serverName: trakrf-db            # per-release overrides to trakrf-db-preview
+    serverName: ""                   # defaults to fullnameOverride in templates
     baseBackupSchedule: "30 9 * * *"
     retentionPolicy: "14d"
 
