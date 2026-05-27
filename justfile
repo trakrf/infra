@@ -117,13 +117,16 @@ cnpg-bootstrap CLUSTER:
 
 # Per-env CNPG role credential Secrets.
 #
-# Preview (post-TRA-849, dedicated Cluster): Secrets live natively in
-# trakrf-preview alongside the Cluster + apps. No reflector annotations.
+# Each Cluster (preview, prod) holds the same role names (trakrf-app,
+# trakrf-migrate) and references the same Secret names (trakrf-app-credentials,
+# trakrf-migrate-credentials) — the K8s namespace is what disambiguates them.
 #
-# Prod (still on the shared Cluster in trakrf-system until TRA-850): Secrets
-# live in trakrf-system and reflector mirrors them into trakrf-prod where
-# the backend + ingester run. Reflector goes away for prod when TRA-850
-# co-locates prod onto a dedicated Cluster.
+# Preview: Secrets live natively in trakrf-preview alongside the Cluster +
+# apps. No reflector annotations needed.
+#
+# Prod (until the prod-half ticket co-locates the prod Cluster in trakrf-prod):
+# Secrets live in trakrf-system (shared Cluster's namespace) and reflector
+# mirrors them into trakrf-prod where backend + ingester run.
 #
 # Passwords come from .env.local using openssl rand -hex (per
 # feedback_db_password_alphabet — base64 / + chars break URL DSNs).
@@ -137,30 +140,29 @@ db-secrets:
     @test -n "${TRAKRF_APP_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_APP_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW not set in .env.local"; exit 1; }
     @test -n "${TRAKRF_MIGRATE_DB_PASSWORD_PROD:-}" || { echo "ERROR: TRAKRF_MIGRATE_DB_PASSWORD_PROD not set in .env.local"; exit 1; }
-    @just _db-secret app     preview trakrf-preview ""              "${TRAKRF_APP_DB_PASSWORD_PREVIEW}"
-    @just _db-secret app     prod    trakrf-system  "trakrf-prod"   "${TRAKRF_APP_DB_PASSWORD_PROD}"
-    @just _db-secret migrate preview trakrf-preview ""              "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW}"
-    @just _db-secret migrate prod    trakrf-system  "trakrf-prod"   "${TRAKRF_MIGRATE_DB_PASSWORD_PROD}"
+    @just _db-secret app     trakrf-preview ""             "${TRAKRF_APP_DB_PASSWORD_PREVIEW}"
+    @just _db-secret app     trakrf-system  "trakrf-prod"  "${TRAKRF_APP_DB_PASSWORD_PROD}"
+    @just _db-secret migrate trakrf-preview ""             "${TRAKRF_MIGRATE_DB_PASSWORD_PREVIEW}"
+    @just _db-secret migrate trakrf-system  "trakrf-prod"  "${TRAKRF_MIGRATE_DB_PASSWORD_PROD}"
     @echo "Secrets applied. Preview: native in trakrf-preview. Prod: reflector-mirrored into trakrf-prod."
 
 # Helper: create one CNPG role credential Secret.
-#   ROLE   : "app" | "migrate"
-#   ENV    : "preview" | "prod"  (used in the Secret name suffix)
+#   ROLE   : "app" | "migrate"          → produces Secret `trakrf-<ROLE>-credentials`
 #   NS     : namespace to create the Secret in
 #   REFLECT: target namespace for reflector mirroring; empty disables annotations
 #   PW     : password
-_db-secret ROLE ENV NS REFLECT PW:
-    @kubectl create secret generic trakrf-{{ROLE}}-{{ENV}}-credentials -n {{NS}} \
-      --from-literal=username=trakrf-{{ROLE}}-{{ENV}} \
+_db-secret ROLE NS REFLECT PW:
+    @kubectl create secret generic trakrf-{{ROLE}}-credentials -n {{NS}} \
+      --from-literal=username=trakrf-{{ROLE}} \
       --from-literal=password="{{PW}}" \
       --dry-run=client -o yaml | kubectl apply -f -
     @if [ -n "{{REFLECT}}" ]; then \
-       kubectl annotate --overwrite secret trakrf-{{ROLE}}-{{ENV}}-credentials -n {{NS}} \
+       kubectl annotate --overwrite secret trakrf-{{ROLE}}-credentials -n {{NS}} \
          reflector.v1.k8s.emberstack.com/reflection-allowed=true \
          reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
          reflector.v1.k8s.emberstack.com/reflection-auto-namespaces={{REFLECT}}; \
      else \
-       kubectl annotate --overwrite secret trakrf-{{ROLE}}-{{ENV}}-credentials -n {{NS}} \
+       kubectl annotate --overwrite secret trakrf-{{ROLE}}-credentials -n {{NS}} \
          reflector.v1.k8s.emberstack.com/reflection-allowed- \
          reflector.v1.k8s.emberstack.com/reflection-auto-enabled- \
          reflector.v1.k8s.emberstack.com/reflection-auto-namespaces- 2>/dev/null || true; \
