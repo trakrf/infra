@@ -48,6 +48,17 @@ resource "google_storage_bucket_iam_member" "cnpg_backups_object_admin" {
   member = "serviceAccount:${google_service_account.cnpg_backups.email}"
 }
 
+# barman-cloud-wal-archive (Phase 2) calls GET /b/<bucket>?fields=name
+# to verify the bucket exists before each upload. objectAdmin grants
+# object perms only — not bucket metadata. legacyBucketReader is the
+# smallest add: storage.buckets.get + .list, scoped to this bucket. The
+# Phase 1 pg_dump path uses object PUTs only and does not need this.
+resource "google_storage_bucket_iam_member" "cnpg_backups_bucket_reader" {
+  bucket = google_storage_bucket.cnpg_backups.name
+  role   = "roles/storage.legacyBucketReader"
+  member = "serviceAccount:${google_service_account.cnpg_backups.email}"
+}
+
 # Workload Identity: allow the K8s SA trakrf-system/cnpg-backups to
 # impersonate this GCP SA. Subject must match the KSA created by
 # helm/trakrf-db/templates/backup-serviceaccount.yaml exactly.

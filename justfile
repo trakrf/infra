@@ -342,18 +342,20 @@ db-restore-test ENV="preview":
 db-pitr-trigger-base:
     #!/usr/bin/env bash
     set -euo pipefail
+    # kubectl apply requires a fixed name; embed a timestamp for uniqueness.
+    name="trakrf-db-manual-$(date -u +%Y%m%d%H%M%S)"
     kubectl -n trakrf-system apply -f - <<EOF
     apiVersion: postgresql.cnpg.io/v1
     kind: Backup
     metadata:
-      generateName: trakrf-db-manual-
+      name: ${name}
       namespace: trakrf-system
     spec:
       cluster:
         name: trakrf-db
       method: barmanObjectStore
     EOF
-    echo "Backup CR submitted. Watch with: kubectl -n trakrf-system get backup -w"
+    echo "Backup CR ${name} submitted. Watch with: kubectl -n trakrf-system get backup -w"
 
 # Proves CNPG PITR by spinning up a scratch Cluster that recovers from
 # the barman object store, optionally to a specific point in time. The
