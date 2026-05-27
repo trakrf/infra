@@ -53,13 +53,13 @@ envs:
       createRetainClass: true
       externalIp: ""
   prod:
-    dbHost: trakrf-db-rw.trakrf-system
-    ingressEnabled: false
+    dbHost: trakrf-db-prod-rw.trakrf-prod
+    ingressEnabled: true
     mqttIp: ""
     dbCluster:
-      enabled: false
-      fullnameOverride: trakrf-db
-      namespace: trakrf-system
+      enabled: true
+      fullnameOverride: trakrf-db-prod
+      namespace: trakrf-prod
       createRetainClass: false
       externalIp: ""
 
