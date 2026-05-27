@@ -20,41 +20,44 @@ This ticket proves the per-env-Cluster tooling end-to-end on preview before the 
 ## End-state topology (post-TRA-849)
 
 ```
-trakrf-system        Old shared `trakrf-db` Cluster — now hosts ONLY trakrf_prod
-                       - Application repointed at the refactored single-env chart
-                         with env=prod values overlay (same chart, flat values)
-                       - existing PVC patched to reclaimPolicy=Retain
-                       - reflector continues to mirror trakrf-{app,migrate}-prod-credentials
-                         from trakrf-system → trakrf-prod ns (cross-ns is unavoidable
-                         while prod isn't co-located; TRA-850 fixes that)
+trakrf-system        Shared `trakrf-db` Cluster — now hosts a single DB
+                     called `trakrf` (renamed from trakrf_prod by pre-merge SQL).
+                       - Application uses the refactored single-env chart with
+                         only fullnameOverride + bucket/gsa overrides (flat names
+                         match defaults)
+                       - existing PV patched to reclaimPolicy=Retain
+                       - reflector continues mirroring trakrf-{app,migrate}-credentials
+                         from trakrf-system → trakrf-prod ns (cross-ns unavoidable
+                         until prod-half rebuilds prod onto its own Cluster)
                        - Application: automated.prune=false (stateful guardrail)
-                       - phase-1 + phase-2 backups continue under serverName=trakrf-db
+                       - phase-1 dumps under gs://<bucket>/trakrf-db/dump/
+                       - phase-2 base + WAL under gs://<bucket>/trakrf-db/{base,wals}/
 
 trakrf-preview       New dedicated `trakrf-db-preview` Cluster (CNPG), co-located
                        with backend + ingester. No cross-namespace anything.
-                       - trakrf_preview DB + trakrf-app-preview / trakrf-migrate-preview
-                         roles + their CNPG-referenced Secrets, ALL in this ns
-                       - phase-1 pg_dump CronJob + phase-2 ScheduledBackup writing
-                         to gs://<bucket>/trakrf-db-preview/{base,wals}/
-                       - external LoadBalancer Service for FDW dev moves here from
-                         trakrf-system; static IP and DNS A record unchanged
+                       - trakrf DB + trakrf-app / trakrf-migrate roles + their
+                         CNPG-referenced Secrets, ALL native in this ns
+                       - phase-1 pg_dump CronJob + phase-2 ScheduledBackup
+                         under gs://<bucket>/trakrf-db-preview/{dump,base,wals}/
+                       - external LoadBalancer Service for FDW dev moves here
+                         from trakrf-system; static IP and DNS A record unchanged
                        - PVC on premium-rwo-retain StorageClass
                        - Application: automated.prune=false
                      trakrf-backend-preview (DSN → trakrf-db-preview-rw.trakrf-preview)
                      trakrf-ingester-preview (same DSN)
 
-trakrf-prod          Unchanged in TRA-849: backend + ingester continue to read
-                       trakrf-{app,migrate}-prod-credentials reflected from
+trakrf-prod          Unchanged in the preview half: backend + ingester read
+                       trakrf-{app,migrate}-credentials reflected from
                        trakrf-system; DSN host stays trakrf-db-rw.trakrf-system.
-                       TRA-850 stands up trakrf-db-prod here and retires the
-                       shared Cluster.
+                       Prod-half ticket stands up trakrf-db-prod here and
+                       retires the shared Cluster.
 ```
 
 The new lifecycle invariant the ticket spells out: each per-env Cluster is **its own ArgoCD Application** with `automated.prune: false` and PV `reclaimPolicy: Retain`, so neither an app-release prune nor a namespace teardown can delete the DB or its volumes. Backend + ingester remain on the existing app Applications (`automated.prune: true` is fine — they're stateless).
 
-## Chart approach — flatten in place, no `envs:` loop
+## Chart approach — fully flat, no `envs:` loop, no env suffix in names
 
-`helm/trakrf-db` is refactored to single-env shape. Every template that today ranges over `.Values.envs` (`cluster.yaml` managed roles, `databases.yaml`, `init-grants-job.yaml`, `backup-cronjob.yaml`) becomes singular. Top-level values are flat:
+`helm/trakrf-db` is refactored to single-env shape. Every template that today ranges over `.Values.envs` (`cluster.yaml` managed roles, `databases.yaml`, `init-grants-job.yaml`, `backup-cronjob.yaml`) becomes singular. Top-level values are flat AND env-unsuffixed — with cluster-per-env, the namespace and `fullnameOverride` discriminate environments; the DB, role, and Secret names don't need their own env suffix:
 
 ```yaml
 # values.yaml — single-env defaults
@@ -70,19 +73,20 @@ postgresql:
     timescaledb.license: timescale
     password_encryption: scram-sha-256
 
-# The Postgres database + roles + secrets the chart manages.
-# Per-release overlay sets these to env-specific names.
+# The Postgres database + roles + secrets the chart manages. Names are
+# env-unsuffixed because each Cluster only hosts one env — the K8s
+# namespace is the env discriminator.
 database:
-  name: trakrf_preview              # Postgres DB name (underscore form)
-  cnpgName: trakrf-preview          # CNPG Database CRD k8s name (hyphen form)
+  name: trakrf                      # Postgres DB name
+  cnpgName: trakrf                  # CNPG Database CRD k8s name (DNS-1123)
 
 roles:
-  app: trakrf-app-preview
-  migrate: trakrf-migrate-preview
+  app: trakrf-app
+  migrate: trakrf-migrate
 
 secrets:
-  app: trakrf-app-preview-credentials
-  migrate: trakrf-migrate-preview-credentials
+  app: trakrf-app-credentials
+  migrate: trakrf-migrate-credentials
 
 storage:
   size: 10Gi
@@ -102,11 +106,12 @@ backups:
   pgDumpImage: ghcr.io/cloudnative-pg/postgresql:17.2
   uploadImage: curlimages/curl:8.10.1
   serviceAccountName: cnpg-backups
-  dumpPrefix: preview                # GCS path prefix; per-release overrides to "prod"
-  # Phase 2 physical / PITR — same bucket, distinct serverName per cluster
+  # GCS path layout: gs://<bucket>/<fullnameOverride>/dump/YYYY/MM/DD/HHMM.pgdump
+  # Phase 2 physical / PITR paths live alongside under
+  # gs://<bucket>/<fullnameOverride>/{base,wals}/...
   cluster:
     enabled: false
-    serverName: trakrf-db
+    serverName: ""                   # defaults to fullnameOverride in templates
     baseBackupSchedule: "30 9 * * *"
     retentionPolicy: "14d"
 
@@ -125,7 +130,7 @@ Template touchpoints:
 - `cluster.yaml` — one `managed.roles` block built from `.Values.roles.{app,migrate}` + `.Values.secrets.{app,migrate}`. `bootstrap.initdb.{database,owner}` reads from `.Values.database.name` / `.Values.roles.migrate`.
 - `databases.yaml` — one `Database` CR (`metadata.name = .Values.database.cnpgName`, `spec.name = .Values.database.name`, `spec.owner = .Values.roles.migrate`).
 - `init-grants-job.yaml` — one Job, parameterized off the flat values; PGHOST defaults to `{{ .Values.fullnameOverride }}-rw`.
-- `backup-cronjob.yaml` — one CronJob named simply `pg-dump` (one per release ns; no env suffix needed). Uploads to `gs://<bucket>/{{ .Values.backups.dumpPrefix }}/<ts>.pgdump`. `dumpPrefix` defaults to `preview` and is overridden to `prod` in the shared release — same prefixes as today, so the existing GCS lifecycle rule (`matches_prefix = ["preview/", "prod/"]`) keeps working unchanged.
+- `backup-cronjob.yaml` — one CronJob named simply `pg-dump`. Uploads to `gs://<bucket>/<fullnameOverride>/dump/<ts>.pgdump`. The GCS lifecycle rule's `matches_prefix` is broadened to cover the per-cluster paths (`trakrf-db/dump/`, `trakrf-db-preview/dump/`) plus the legacy `preview/` and `prod/` for transition cleanup.
 - `scheduled-backup.yaml` — one ScheduledBackup; `backup.barmanObjectStore.serverName = .Values.backups.cluster.serverName`.
 - `external-service-preview.yaml` — selector becomes `cnpg.io/cluster: {{ .Values.fullnameOverride }}`.
 - `backup-serviceaccount.yaml` — unchanged shape; lives in the release ns.
@@ -133,27 +138,22 @@ Template touchpoints:
 Per-release values overlay (passed as `inlineValues` by the root chart):
 
 ```yaml
-# trakrf-db (shared, prod-only post-merge) — env=prod overlay
+# trakrf-db (shared Cluster, prod-only)
 fullnameOverride: trakrf-db
-database: { name: trakrf_prod, cnpgName: trakrf-prod }
-roles: { app: trakrf-app-prod, migrate: trakrf-migrate-prod }
-secrets: { app: trakrf-app-prod-credentials, migrate: trakrf-migrate-prod-credentials }
-backups: { dumpPrefix: prod, cluster: { serverName: trakrf-db } }
-externalPreview: { enabled: false }
+backups: { bucket: <tofu>, gcpServiceAccountEmail: <tofu> }
+# serverName defaults to fullnameOverride → trakrf-db
 ```
 
 ```yaml
-# trakrf-db-preview (new) — env=preview overlay
+# trakrf-db-preview (new dedicated preview Cluster)
 fullnameOverride: trakrf-db-preview
-database: { name: trakrf_preview, cnpgName: trakrf-preview }
-roles: { app: trakrf-app-preview, migrate: trakrf-migrate-preview }
-secrets: { app: trakrf-app-preview-credentials, migrate: trakrf-migrate-preview-credentials }
-backups: { dumpPrefix: preview, cluster: { serverName: trakrf-db-preview } }
-externalPreview: { enabled: true, loadBalancerIP: <tofu>, sourceRanges: [<breakglass>] }
 storage: { createRetainClass: true }
+backups: { bucket: <tofu>, gcpServiceAccountEmail: <tofu> }
+# serverName defaults to fullnameOverride → trakrf-db-preview
+# GKE-only externalPreview block adds enabled/loadBalancerIP/sourceRanges
 ```
 
-Same chart, both releases. No `envs:` list, no reflector logic in the chart.
+Same chart, both releases. No `envs:` list. No env suffix in DB / role / Secret names. No reflector logic in the chart.
 
 ## Stateful guardrails
 
@@ -239,18 +239,18 @@ resource "google_service_account_iam_member" "cnpg_backups_wi_pgdump_preview" {
 }
 ```
 
-`google_storage_bucket.cnpg_backups.lifecycle_rule.matches_prefix` — already scoped to `["preview/", "prod/"]` for phase-1 paths (TRA-842). No change.
+`google_storage_bucket.cnpg_backups.lifecycle_rule.matches_prefix` is broadened to cover the new per-cluster paths `trakrf-db/dump/` and `trakrf-db-preview/dump/` plus the legacy `preview/` / `prod/` prefixes so any straggler dumps still age out during transition.
 
-No new tofu outputs; the existing `cnpg_backup_bucket` + `cnpg_backups_service_account_email` already cover preview.
+No new tofu outputs; the existing `cnpg_backup_bucket` + `cnpg_backups_service_account_email` already cover both Clusters.
 
 ### 7. `justfile` — `db-secrets` reshape
 
-Today `db-secrets` creates 4 reflector-annotated Secrets in `trakrf-system`. After TRA-849:
+Today's `db-secrets` creates 4 reflector-annotated env-suffixed Secrets in `trakrf-system`. After this PR:
 
-- 2 Secrets remain in `trakrf-system` for the prod role (still reflector-annotated to mirror to `trakrf-prod` — that crosses-ns path doesn't dissolve until TRA-850).
-- 2 Secrets move to `trakrf-preview`, NO reflector annotations (CNPG and the apps are co-located).
+- `trakrf-app-credentials` + `trakrf-migrate-credentials` in `trakrf-preview` (native, no reflector annotations).
+- `trakrf-app-credentials` + `trakrf-migrate-credentials` in `trakrf-system` (reflector-annotated to mirror to `trakrf-prod` — cross-ns dissolves when the prod-half ticket co-locates the prod Cluster).
 
-The recipe takes `_db-secret ROLE NS ENV` shape, where the NS for preview is `trakrf-preview` (no `reflectTo`) and for prod stays `trakrf-system` (with reflector annotation).
+Same K8s Secret names in both env namespaces — disambiguation is by namespace. The `_db-secret ROLE NS REFLECT PW` helper signature drops the old `ENV` parameter; the role's username matches its name exactly (`trakrf-app`, `trakrf-migrate`).
 
 Passwords continue to come from `.env.local` (`TRAKRF_{APP,MIGRATE}_DB_PASSWORD_{PREVIEW,PROD}`) and use `openssl rand -hex` (per `feedback_db_password_alphabet`).
 
@@ -263,64 +263,83 @@ Add `storage.k8s.io/StorageClass` to `clusterResourceWhitelist`. Without this, t
 The chart refactor + new Application + root template changes ship in one PR. Order of operations around merge:
 
 ```
-PRE-MERGE
-  1. Patch the existing shared Cluster PV reclaimPolicy → Retain (kubectl).
-     Safety net against any accidental Cluster delete during the transition.
-  2. `just db-secrets` (refactored) creates the 2 preview secrets natively in
-     trakrf-preview ns (no reflector annotations) AND re-applies the 2 prod
-     secrets in trakrf-system with reflector annotations (unchanged for prod).
-     Must precede merge so CNPG-managed roles can resolve passwordSecret
-     references on first reconcile (avoids the role-stuck-PendingReconciliation
-     pattern from TRA-823).
-  3. Confirm TSC preview is reachable and the FDW pull script from platform
-     PR #413 is runnable (it ran in dry-run; we'll run it for real).
-  4. Snapshot current preview row counts from TSC for post-migration sanity.
+PRE-MERGE — shared Cluster cleanup + rename (kubectl + psql against existing trakrf-db)
+  1. Patch the shared Cluster PV reclaimPolicy → Retain.
+       PV=$(kubectl get pvc -n trakrf-system -l cnpg.io/cluster=trakrf-db \
+             -o jsonpath='{.items[0].spec.volumeName}')
+       kubectl patch pv "$PV" \
+         -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+
+  2. Drop preview state from the shared Cluster (legacy multi-env objects):
+       kubectl -n trakrf-system exec trakrf-db-1 -- psql -U postgres <<SQL
+         DROP DATABASE IF EXISTS trakrf_preview;
+         DROP ROLE IF EXISTS "trakrf-app-preview";
+         DROP ROLE IF EXISTS "trakrf-migrate-preview";
+       SQL
+       kubectl -n trakrf-system delete secret \
+         trakrf-app-preview-credentials trakrf-migrate-preview-credentials \
+         --ignore-not-found
+
+  3. Rename prod-side objects to flat names so the new chart shape matches:
+       kubectl -n trakrf-system exec trakrf-db-1 -- psql -U postgres <<SQL
+         ALTER DATABASE trakrf_prod RENAME TO trakrf;
+         ALTER ROLE "trakrf-app-prod" RENAME TO "trakrf-app";
+         ALTER ROLE "trakrf-migrate-prod" RENAME TO "trakrf-migrate";
+       SQL
+     (Safe because trakrf_prod is empty until the Sat 2026-05-30 prod cutover.)
+
+  4. Delete the legacy *-prod-credentials Secrets in trakrf-system; just
+     db-secrets will recreate them under the new flat names in step 5.
+       kubectl -n trakrf-system delete secret \
+         trakrf-app-prod-credentials trakrf-migrate-prod-credentials \
+         --ignore-not-found
+
+  5. `just db-secrets` (new shape) creates:
+       - trakrf-preview ns: trakrf-app-credentials + trakrf-migrate-credentials
+         (native, no reflector annotations)
+       - trakrf-system ns: trakrf-app-credentials + trakrf-migrate-credentials
+         (reflector-annotated for trakrf-prod ns)
+
+  6. Confirm TSC preview is reachable and the FDW pull script (platform
+     PR #413) is runnable.
+
+  7. Snapshot current preview row counts from TSC for the post-migration diff.
 
 MERGE
-  5. PR merges. `scripts/apply-root-app.sh gke` re-renders the root chart.
+  8. PR merges. `scripts/apply-root-app.sh gke` re-renders the root chart.
 
-POST-MERGE (ArgoCD reconciles)
-  6. AppProject permits StorageClass.
-  7. New trakrf-db-preview Application creates StorageClass `premium-rwo-retain`
-     + new CNPG Cluster + Database + managed roles (referencing the Secrets
-     created in step 2) + pg_dump CronJob + ScheduledBackup, all in
-     trakrf-preview ns.
-  8. Shared trakrf-db Application reconciles to env=prod overlay:
-       - prunes the trakrf-preview Database CR (CNPG retains the underlying
-         Postgres DB per default databaseReclaimPolicy)
-       - removes trakrf-app-preview + trakrf-migrate-preview from managed.roles
-         (CNPG ensures them absent; role stays in Postgres while it owns
-         objects — cleaned up in step 10)
-       - pg_dump CronJob pg-dump (single-env shape) replaces the old
-         pg-dump-preview + pg-dump-prod pair; on the shared release it runs
-         with dumpPrefix=prod
-       - reflector annotations on the trakrf-system source Secrets for the
-         preview role were already removed in step 2; reflector reaps the
-         mirrored copies in trakrf-preview shortly after — at which point
-         CNPG creates fresh native ones from the trakrf-preview source
-  9. trakrf-backend-preview + trakrf-ingester-preview Applications redeploy
-     with the new DSN host (trakrf-db-preview-rw.trakrf-preview). They
-     CrashLoopBackOff briefly until the new DB is migrated and populated
-     (step 11).
+POST-MERGE — Argo reconciles
+  9. AppProject permits StorageClass (kubectl-applied, not synced).
+       kubectl apply -f argocd/projects/trakrf.yaml
+ 10. tofu apply for the 2 new WI bindings + lifecycle prefix update.
+       just gcp
+ 11. trakrf-db-preview Application creates StorageClass premium-rwo-retain
+     + Cluster + Database + managed roles (refs Secrets from step 5)
+     + pg_dump CronJob + ScheduledBackup, all in trakrf-preview ns.
+ 12. Shared trakrf-db Application reconciles to the new chart shape:
+       - Database CR renamed (trakrf-prod → trakrf); CNPG sees existing PG DB
+         (we renamed in step 3) and ensures present — no-op
+       - managed.roles list updated to trakrf-app + trakrf-migrate; CNPG sees
+         existing PG roles (renamed in step 3) and ensures present — no-op
+       - passwordSecret refs flip to trakrf-{app,migrate}-credentials; CNPG
+         reads the new Secrets (created step 5) and may set new passwords
+       - pg_dump CronJob's upload path flips to trakrf-db/dump/...
+ 13. trakrf-backend-preview + trakrf-ingester-preview redeploy with new DSN
+     (trakrf-db-preview-rw.trakrf-preview, db=trakrf, user=trakrf-app).
+     CrashLoopBackOff briefly until step 14 populates data.
+ 14. Backend-prod + ingester-prod redeploy with new DSN (still
+     trakrf-db-rw.trakrf-system, but db=trakrf and user=trakrf-app — the
+     renamed names). CNPG may briefly out-of-sync the role password until
+     the next managed.roles reconcile; reloader bounces apps when the
+     Secret content settles.
 
-MANUAL CLEANUP + MIGRATION
- 10. On the shared Cluster, drop the now-orphaned Postgres objects:
-       psql -d postgres -c "DROP DATABASE trakrf_preview"
-       psql -d postgres -c "DROP ROLE \"trakrf-app-preview\""
-       psql -d postgres -c "DROP ROLE \"trakrf-migrate-preview\""
-       kubectl delete secret trakrf-app-preview-credentials \
-                              trakrf-migrate-preview-credentials \
-                              -n trakrf-system
-     Idempotent / ignore-not-found.
- 11. Run the migration runbook (docs/db-migration.md) — schema bootstrap via
-     the trakrf-backend migrate Job against the new Cluster (the existing
-     migrate Job pattern from TRA-361 — already in the app chart), then the
-     FDW pull from TSC preview. Sanity-check row counts against step 4.
- 12. Apps come up green. Negative-auth test: confirm trakrf-app-preview
-     cannot connect to trakrf_prod on the shared Cluster.
+MIGRATION + VERIFY (preview half)
+ 15. Follow `docs/db-migration.md` with `<env>=preview` end-to-end:
+       schema bootstrap → FDW pull from TSC preview → row-count diff →
+       FDW teardown → rollout-restart → negative-auth test.
 ```
 
-**Step 2 + secret-name collision caveat.** `trakrf-app-preview-credentials` in `trakrf-preview` ns currently exists as a reflector mirror. Step 2 deletes it first (and removes annotations from the source in trakrf-system), then `kubectl apply` writes the native copy. Sequence is: `kubectl annotate ... reflection-allowed-` (or re-annotate to drop preview from reflection-auto-namespaces) → wait for reflector to reap the mirror → `kubectl apply` native Secret. Otherwise reflector and our apply race.
+**Idempotency.** All pre-merge SQL is guarded with `IF EXISTS` / `IF NOT EXISTS` where possible; re-running them is safe. The kubectl Secret deletes use `--ignore-not-found`.
 
 ### Decision: who owns the credential Secret
 
@@ -359,13 +378,12 @@ argocd app get trakrf-db-preview -o json | jq '.status.sync.status,.status.healt
 
 ### AC: backend + ingester co-located in env ns; no cross-namespace mirror
 ```bash
-kubectl -n trakrf-preview get secret trakrf-app-preview-credentials \
+kubectl -n trakrf-preview get secret trakrf-app-credentials \
   -o jsonpath='{.metadata.annotations}'
 # expect: no reflector.* annotations
-kubectl -n trakrf-preview get secret trakrf-app-preview-credentials \
+kubectl -n trakrf-preview get secret trakrf-app-credentials \
   -o jsonpath='{.metadata.ownerReferences}'
-# expect: Cluster trakrf-db-preview owner ref (if CNPG-managed) OR no owner ref
-#         (if just-db-secrets created)
+# expect: no reflector owner; Secret is just-db-secrets-created (no ownerRef)
 ```
 
 ### AC: Cluster Application has auto-prune off; PVC reclaim Retain
@@ -391,17 +409,18 @@ Compare pre-migration TSC row counts against post-migration new-Cluster row coun
 ### AC: backend + ingester serve from the dedicated Cluster; negative-auth passes
 ```bash
 kubectl -n trakrf-preview exec deploy/trakrf-backend -- printenv PG_URL
-# expect: host=trakrf-db-preview-rw.trakrf-preview ... dbname=trakrf_preview
-# Negative-auth (preview role → prod DB on shared Cluster):
-PW=$(kubectl -n trakrf-preview get secret trakrf-app-preview-credentials \
+# expect: host=trakrf-db-preview-rw.trakrf-preview ... dbname=trakrf
+# Negative-auth (preview app role → shared prod Cluster):
+PW=$(kubectl -n trakrf-preview get secret trakrf-app-credentials \
   -o jsonpath='{.data.password}' | base64 -d)
 kubectl run --rm -it psql-neg -n trakrf-preview --restart=Never --image=postgres:17 \
   --env=PGPASSWORD="$PW" -- \
-  psql -h trakrf-db-rw.trakrf-system -U trakrf-app-preview -d trakrf_prod -c "SELECT 1;"
-# expect: connect/auth failure
+  psql -h trakrf-db-rw.trakrf-system -U trakrf-app -d trakrf -c "SELECT 1;"
+# expect: auth failure (each Cluster has its own role passwords; preview's
+#         trakrf-app password does NOT match prod's trakrf-app password)
 ```
 
-### AC: trakrf_preview dropped from old shared Cluster
+### AC: legacy preview state dropped from old shared Cluster
 ```bash
 kubectl -n trakrf-system exec trakrf-db-1 -- \
   psql -U postgres -c "SELECT 1 FROM pg_database WHERE datname='trakrf_preview'"
@@ -419,7 +438,7 @@ kubectl -n trakrf-system exec trakrf-db-1 -- \
 - **Reconcile churn drops something important.** Pre-merge PV reclaim patch is the belt; `automated.prune: false` post-merge is the suspenders. Worst case is a sync error, not data loss.
 - **CNPG role-removal pause.** Removing a managed role that owns objects (preview role owns preview tables) → CNPG may flag the role-removal step. We're dropping the DB the role owns in step 9, so the dependency dissolves. If the operator complains *before* step 9, the Application will sit Degraded but neither the DB nor the role is gone.
 - **External LB IP migration.** `db.preview.gke.trakrf.id` static IP moves from a Service in trakrf-system to a Service in trakrf-preview. GKE re-attaches the IP on the new Service. Brief downtime on the FDW endpoint; FDW pull runs inside the cluster anyway, so the external endpoint is only needed during dev iteration — not for the actual migration.
-- **GCS path stability.** Phase-1 dumps continue to land under `gs://<bucket>/preview/` (new Cluster) and `gs://<bucket>/prod/` (shared) via the `backups.dumpPrefix` value — the existing lifecycle rule `matches_prefix = ["preview/", "prod/"]` keeps working unchanged. Phase-2 paths diverge by serverName: shared writes `gs://<bucket>/trakrf-db/{base,wals}/`, new preview writes `gs://<bucket>/trakrf-db-preview/{base,wals}/` — both untouched by the lifecycle rule, retention is CNPG-native.
+- **GCS path stability.** Phase-1 dumps now land under per-cluster paths: `gs://<bucket>/trakrf-db/dump/` (shared) and `gs://<bucket>/trakrf-db-preview/dump/` (new). Lifecycle rule's `matches_prefix` is broadened to cover both, plus the legacy `preview/` and `prod/` prefixes so any straggler dumps still age out within 14 days. Phase-2 base + WAL live alongside under `gs://<bucket>/<cluster>/{base,wals}/` — untouched by the lifecycle rule; CNPG owns retention there.
 - **Day-of-disruption budget.** User confirmed up to a day. Preview app outage spans the migration window (likely <1h); FDW pull endpoint blip is seconds.
 
 ## Workflow

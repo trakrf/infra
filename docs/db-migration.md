@@ -1,8 +1,14 @@
 # Logical migration runbook — TimescaleDB Cloud → CNPG
 
-> Used by the preview-half rebuild and re-used verbatim by the prod-half
-> rebuild. Substitute `<env>` placeholders throughout: `preview` for the
-> preview-half, `prod` for the prod-half.
+> Source-agnostic shape: substitute `<env>` placeholders (`preview` / `prod`)
+> for the K8s namespace and Cluster name. The DB, roles, and Secrets are
+> unsuffixed (`trakrf`, `trakrf-app`, `trakrf-migrate`, `trakrf-{app,migrate}-credentials`)
+> — they have the same names in every Cluster.
+>
+> The procedure here is **TSC → CNPG** specifically. For a future
+> CNPG → CNPG cutover (prod-half if TRA-375 lands on the shared Cluster
+> before the prod-half ticket), the schema bootstrap + FDW source SQL
+> differ; this runbook can be adapted but is not drop-in.
 
 ## Preconditions
 
@@ -12,10 +18,10 @@
 - TSC psql endpoint reachable from the kubectl host (port 5432 TLS); creds
   for the TSC migration source role in `.env.local` (or equivalent).
 - New CNPG Cluster `trakrf-db-<env>` Ready in namespace `trakrf-<env>`.
-- Platform FDW pull script available (trakrf/platform PR #413, branch /
-  `cutover/<env>-fdw-pull.sql`).
-- Application Apps (`trakrf-backend-<env>`, `trakrf-ingester-<env>`) are
-  scaled down or already CrashLoopBackOff (post-DSN-flip, pre-data).
+- Platform FDW pull script available (trakrf/platform PR #413,
+  `cutover/<env>-fdw-pull.sql` or equivalent on a current branch).
+- Application Applications (`trakrf-backend-<env>`, `trakrf-ingester-<env>`)
+  are scaled down or already CrashLoopBackOff (post-DSN-flip, pre-data).
 
 ## Steps
 
@@ -36,7 +42,7 @@ Keep `/tmp/migration-source-counts.txt` for the post-pull diff.
 
 ### 2. Schema bootstrap via the trakrf-backend migrate Job
 
-The existing migrate Job pattern runs as the migrate role and applies the
+The existing migrate Job runs as the migrate role and applies the
 golang-migrate set to the new DB. It's already part of the trakrf-backend
 chart; trigger it manually:
 
@@ -67,11 +73,11 @@ SUPER_PW=$(kubectl -n trakrf-<env> get secret trakrf-db-<env>-superuser \
 ```
 
 Run the FDW setup SQL against the new Cluster's external LB endpoint
-(`db.preview.gke.trakrf.id` for preview; equivalent for prod when added):
+(`db.preview.gke.trakrf.id` for preview; equivalent host for prod):
 
 ```bash
 PGPASSWORD="$SUPER_PW" psql \
-  "host=db.<env>.gke.trakrf.id user=postgres dbname=trakrf_<env> \
+  "host=db.<env>.gke.trakrf.id user=postgres dbname=trakrf \
    sslmode=verify-ca sslrootcert=/tmp/trakrf-db-<env>-ca.crt" \
   -f <(curl -fsSL https://raw.githubusercontent.com/trakrf/platform/<sha>/cutover/<env>-fdw-pull.sql)
 ```
@@ -93,7 +99,7 @@ The script performs:
 
 ```bash
 kubectl -n trakrf-<env> exec deploy/trakrf-db-<env>-1 -- \
-  psql -U postgres -d trakrf_<env> -c "
+  psql -U postgres -d trakrf -c "
     SELECT relname, n_live_tup
     FROM pg_stat_user_tables
     WHERE schemaname='trakrf'
@@ -109,7 +115,7 @@ migrated).
 
 ```bash
 PGPASSWORD="$SUPER_PW" psql \
-  "host=db.<env>.gke.trakrf.id user=postgres dbname=trakrf_<env> \
+  "host=db.<env>.gke.trakrf.id user=postgres dbname=trakrf \
    sslmode=verify-ca sslrootcert=/tmp/trakrf-db-<env>-ca.crt" -c "
   DROP USER MAPPING IF EXISTS FOR postgres SERVER tsc_source;
   DROP SERVER IF EXISTS tsc_source;
@@ -133,40 +139,21 @@ Expected: backend Ready, `/healthz` returns 200 via port-forward.
 
 ### 7. Negative-auth test
 
-Confirm the env's app role cannot reach the other env's DB:
+Confirm the env's app role cannot reach the other env's Cluster:
 
 ```bash
-PW=$(kubectl -n trakrf-<env> get secret trakrf-app-<env>-credentials \
+PW=$(kubectl -n trakrf-<env> get secret trakrf-app-credentials \
   -o jsonpath='{.data.password}' | base64 -d)
-# For preview: target = trakrf_prod on shared Cluster.
-# For prod: target = trakrf_preview on the new preview Cluster (or its
-# remnant if reachable).
+# For preview: target Cluster = shared trakrf-db in trakrf-system.
+# For prod: target Cluster = the new trakrf-db-preview in trakrf-preview
+#           (or, post-TRA-850, the other dedicated env Cluster).
 kubectl run --rm -it psql-neg -n trakrf-<env> --restart=Never --image=postgres:17 \
   --env=PGPASSWORD="$PW" -- \
-  psql -h trakrf-db-rw.trakrf-system -U trakrf-app-<env> -d trakrf_<other-env> -c "SELECT 1;"
+  psql -h trakrf-db-rw.trakrf-system -U trakrf-app -d trakrf -c "SELECT 1;"
 ```
 
-Expected: connection / authentication failure.
-
-### 8. Drop source-env objects from the previous Cluster (preview-half only)
-
-On the shared Cluster `trakrf-db` in `trakrf-system`:
-
-```bash
-kubectl -n trakrf-system exec trakrf-db-1 -- \
-  psql -U postgres -c '
-    DROP DATABASE trakrf_<env>;
-    DROP ROLE "trakrf-app-<env>";
-    DROP ROLE "trakrf-migrate-<env>";
-  '
-kubectl -n trakrf-system delete secret \
-  trakrf-app-<env>-credentials \
-  trakrf-migrate-<env>-credentials \
-  --ignore-not-found
-```
-
-(For the prod-half, the equivalent step is "destroy the shared Cluster
-entirely" once prod has cut over to its dedicated Cluster.)
+Expected: authentication failure (role + password don't match across
+Clusters — each Cluster has its own role passwords).
 
 ## Rollback
 

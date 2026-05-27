@@ -1,8 +1,10 @@
 # Cluster-per-env CNPG (preview half) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **History note.** Tasks 1–16 below preserve the original plan with env-suffixed names (`trakrf_preview`/`trakrf_prod`, `trakrf-app-preview`, etc.). After those tasks executed, a follow-up flatten dropped the env suffix from all DB/role/Secret names — see the spec's end-state and the **Task 18 — Operational cutover** section below for the final shape. Git log on the branch is the canonical reference.
 
-**Goal:** Refactor `helm/trakrf-db` to single-env flat values, stand up a dedicated `trakrf-db-preview` CNPG Cluster co-located with backend + ingester in `trakrf-preview`, and repurpose the existing shared `trakrf-db` Application as env=prod-only using the same chart. Add stateful guardrails (`automated.prune: false` + PV `Retain`) and capture a migration runbook the TRA-850 prod-half can reuse verbatim.
+**Goal:** Refactor `helm/trakrf-db` to single-env flat values, stand up a dedicated `trakrf-db-preview` CNPG Cluster co-located with backend + ingester in `trakrf-preview`, and repurpose the existing shared `trakrf-db` Application as env=prod-only using the same chart. Add stateful guardrails (`automated.prune: false` + PV `Retain`) and capture a migration runbook the prod-half ticket can reuse verbatim.
 
 **Architecture:** Same `helm/trakrf-db` chart, no `envs:` loop. Per-release values overlay sets `database` / `roles` / `secrets` flat at top level. Two Argo Applications (`trakrf-db` for prod-on-shared, `trakrf-db-preview` for new dedicated). Backend + ingester preview env DSN repoints to the new Cluster. Tofu adds two new WI bindings against the existing `cnpg-backups-demo` GSA (preview cluster pod KSA + preview pg_dump KSA). The preview rebuild itself happens by operational runbook around merge — chart code lands first, data migration follows.
 
@@ -1480,9 +1482,13 @@ Wait for CI checks; address any failures.
 
 ## Task 18 — Operational cutover (post-merge; not a code change)
 
-This task captures the runbook for executing the cutover. It is NOT a code commit — it's the operational handoff after the PR merges.
+The flatten pass means the chart's defaults now match the desired end state
+without any env suffix in DB/role/Secret names. The shared Cluster needs a
+one-time PG rename so it conforms to the same flat names; the new preview
+Cluster comes up clean from scratch.
 
-- [ ] **Step 1: PV reclaimPolicy patch on the existing shared Cluster PV (pre-merge or immediately post-merge, before reconcile completes)**
+- [ ] **Step 1: PV reclaimPolicy patch on the shared Cluster PV** (pre-merge,
+      protects the existing PV against any accidental delete during transition)
 
 ```bash
 PV=$(kubectl get pvc -n trakrf-system -l cnpg.io/cluster=trakrf-db \
@@ -1492,90 +1498,150 @@ kubectl get pv "$PV" -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'
 # expect: Retain
 ```
 
-- [ ] **Step 2: Apply the updated AppProject (kubectl-applied, not synced)**
+- [ ] **Step 2: Drop legacy preview state from the shared Cluster** (pre-merge)
 
 ```bash
-kubectl apply -f argocd/projects/trakrf.yaml
+kubectl -n trakrf-system exec trakrf-db-1 -- psql -U postgres <<SQL
+DROP DATABASE IF EXISTS trakrf_preview;
+DROP ROLE IF EXISTS "trakrf-app-preview";
+DROP ROLE IF EXISTS "trakrf-migrate-preview";
+SQL
+kubectl -n trakrf-system delete secret \
+  trakrf-app-preview-credentials trakrf-migrate-preview-credentials \
+  --ignore-not-found
 ```
 
-- [ ] **Step 3: Apply tofu**
+- [ ] **Step 3: Rename prod objects on the shared Cluster to flat names** (pre-merge)
+
+`trakrf_prod` is empty until the Saturday 2026-05-30 prod cutover, so the
+rename is structurally safe.
 
 ```bash
-just gcp
+kubectl -n trakrf-system exec trakrf-db-1 -- psql -U postgres <<SQL
+ALTER DATABASE trakrf_prod RENAME TO trakrf;
+ALTER ROLE "trakrf-app-prod" RENAME TO "trakrf-app";
+ALTER ROLE "trakrf-migrate-prod" RENAME TO "trakrf-migrate";
+SQL
 ```
 
-Expected: 2 to add (the two new IAM bindings). Apply.
+- [ ] **Step 4: Delete legacy *-prod-credentials Secrets in trakrf-system** (pre-merge)
 
-- [ ] **Step 4: Recreate db-secrets in the new shape**
+`just db-secrets` recreates them under the new flat names in Step 5.
 
-Reflector-mirror collision avoidance: drop the reflector annotations on the
-prod-shaped Secrets in trakrf-system first if they include preview in the
-auto-namespaces list (after the chart refactor, the new shape only references
-`trakrf-prod` for prod). The `just db-secrets` recipe re-applies the source
-Secrets cleanly; the helper's `else` branch removes any stale annotations.
+```bash
+kubectl -n trakrf-system delete secret \
+  trakrf-app-prod-credentials trakrf-migrate-prod-credentials \
+  --ignore-not-found
+```
+
+- [ ] **Step 5: `just db-secrets` (new shape)** (pre-merge)
+
+Creates flat-named Secrets in both target namespaces. Confirm
+`.env.local` has the four password variables set first.
 
 ```bash
 just db-secrets
 ```
 
-Expected: 2 secrets in trakrf-system (prod, reflector-annotated to trakrf-prod),
-2 secrets in trakrf-preview (no reflector annotations).
+Expected:
+- `trakrf-preview` ns: `trakrf-app-credentials` + `trakrf-migrate-credentials` (no reflector annotations)
+- `trakrf-system` ns: `trakrf-app-credentials` + `trakrf-migrate-credentials` (reflector-annotated → trakrf-prod)
 
-Reap the now-orphaned reflected preview Secrets in trakrf-preview before the
-new Cluster's CNPG controller tries to reconcile against them:
+- [ ] **Step 6: Snapshot TSC preview row counts** (pre-merge)
 
 ```bash
-# The reflector should reap them automatically when the source annotations
-# change; force it if needed.
-kubectl delete secret -n trakrf-preview \
-  trakrf-app-preview-credentials \
-  trakrf-migrate-preview-credentials \
-  --ignore-not-found
-# Then re-create them as native (just db-secrets already did this; this is
-# just the safety net if reflector raced).
+psql "${TSC_PREVIEW_DSN}" -c "
+  SELECT relname, n_live_tup
+  FROM pg_stat_user_tables
+  WHERE schemaname='trakrf'
+  ORDER BY relname;
+" > /tmp/migration-source-counts.txt
 ```
 
-- [ ] **Step 5: Trigger root-chart apply**
+- [ ] **Step 7: Merge PR**
+
+After merge, ArgoCD will detect the root-chart changes once
+`scripts/apply-root-app.sh gke` reconciles values placeholders.
+
+- [ ] **Step 8: Apply the updated AppProject (kubectl-applied, not synced)**
+
+```bash
+kubectl apply -f argocd/projects/trakrf.yaml
+```
+
+- [ ] **Step 9: Apply tofu**
+
+```bash
+just gcp
+```
+
+Expected: 2 to add (the two new WI bindings) + 1 to change (the broadened
+lifecycle prefix). Apply.
+
+- [ ] **Step 10: Push root-chart values + watch reconcile**
 
 ```bash
 scripts/apply-root-app.sh gke
-```
-
-Expected: helm upgrade succeeds; new `trakrf-db-preview` Application + StorageClass land.
-
-- [ ] **Step 6: Watch ArgoCD reconcile**
-
-```bash
 argocd app list | grep -E 'trakrf-db|trakrf-backend|trakrf-ingester'
 argocd app get trakrf-db-preview
 argocd app get trakrf-db
 ```
 
-Wait until `trakrf-db-preview` is Synced+Healthy and `trakrf-db` is Synced (Healthy may show Degraded briefly while managed-role-removal settles).
+Wait until both Cluster Applications are Synced. `trakrf-db-preview` should
+come up Healthy quickly. `trakrf-db` may briefly show Healthy=Degraded while
+CNPG syncs role passwords to the new Secret names.
 
-- [ ] **Step 7: Confirm new Cluster Ready, then run the migration runbook**
+- [ ] **Step 11: Confirm guardrails on new Cluster**
 
 ```bash
 kubectl -n trakrf-preview get cluster trakrf-db-preview
-kubectl -n trakrf-preview get pvc
 kubectl -n trakrf-preview get pv $(kubectl get pvc -n trakrf-preview \
   -l cnpg.io/cluster=trakrf-db-preview \
   -o jsonpath='{.items[0].spec.volumeName}') \
   -o jsonpath='{.spec.persistentVolumeReclaimPolicy}'
 # expect: Retain
+argocd app get trakrf-db-preview -o jsonpath='{.spec.syncPolicy.automated.prune}'
+# expect: false
 ```
 
-Then follow `docs/db-migration.md` end-to-end with `<env>=preview`.
+- [ ] **Step 12: Run the migration runbook for `<env>=preview`**
 
-- [ ] **Step 8: Capture acceptance-criteria evidence**
+Follow `docs/db-migration.md` end-to-end: schema bootstrap via the
+trakrf-backend migrate Job, FDW pull from TSC preview, row-count diff,
+FDW teardown, app rollout-restart.
 
-Append a comment to the PR (or attach to the Linear ticket) containing the
-trimmed output of:
+- [ ] **Step 13: Verify**
+
+```bash
+# Confirm preview DB has data
+kubectl -n trakrf-preview exec trakrf-db-preview-1 -- \
+  psql -U postgres -d trakrf -c "SELECT count(*) FROM trakrf.tag_scan;"
+
+# Negative-auth: preview app credential against shared Cluster
+PW=$(kubectl -n trakrf-preview get secret trakrf-app-credentials \
+  -o jsonpath='{.data.password}' | base64 -d)
+kubectl run --rm -it psql-neg -n trakrf-preview --restart=Never --image=postgres:17 \
+  --env=PGPASSWORD="$PW" -- \
+  psql -h trakrf-db-rw.trakrf-system -U trakrf-app -d trakrf -c "SELECT 1;"
+# expect: auth failure (different password)
+
+# Confirm legacy preview state gone from shared Cluster
+kubectl -n trakrf-system exec trakrf-db-1 -- \
+  psql -U postgres -c "SELECT 1 FROM pg_database WHERE datname='trakrf_preview';"
+# expect: 0 rows
+kubectl -n trakrf-system exec trakrf-db-1 -- \
+  psql -U postgres -c "\du trakrf-app-preview"
+# expect: error (role does not exist)
+```
+
+- [ ] **Step 14: Capture acceptance-criteria evidence on the PR**
+
+Trimmed output of:
 - `argocd app get trakrf-db-preview` (Synced+Healthy, prune=false)
-- `kubectl get pv ...` (Retain)
+- `kubectl get pv ...` (Retain on both Cluster PVs)
 - migration row-count diff (empty)
 - negative-auth `psql` failure
-- `\l` on the shared Cluster (no `trakrf_preview`)
+- pg_database / pg_roles queries showing no preview leftovers on shared
 
 ---
 
