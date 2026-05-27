@@ -7,6 +7,12 @@ spec:
   instances: {{ .Values.cluster.instances }}
   imageName: {{ .Values.cluster.imageName | quote }}
 
+  # The init-grants Job needs superuser to issue per-env grants that the
+  # migrate role cannot self-grant — currently `GRANT USAGE ON FOREIGN DATA
+  # WRAPPER postgres_fdw`. CNPG creates a `<cluster>-superuser` basic-auth
+  # Secret when this is true.
+  enableSuperuserAccess: true
+
   {{- /*
     Annotate the CNPG pod ServiceAccount with the GCP SA email so the
     cluster pods can write WAL + base backups via Workload Identity.

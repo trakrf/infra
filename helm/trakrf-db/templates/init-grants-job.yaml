@@ -56,6 +56,19 @@ spec:
                 secretKeyRef:
                   name: {{ $env.migrateSecret | quote }}
                   key: password
+            # Superuser creds — used only for the FDW USAGE grant below,
+            # which the migrate role cannot self-grant. Secret is created
+            # by CNPG when spec.enableSuperuserAccess is true.
+            - name: PGSUPERUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-superuser" ($.Values.fullnameOverride | default "trakrf-db") | quote }}
+                  key: username
+            - name: PGSUPERPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ printf "%s-superuser" ($.Values.fullnameOverride | default "trakrf-db") | quote }}
+                  key: password
           command:
             - /bin/sh
             - -c
@@ -70,6 +83,13 @@ spec:
                 echo "waiting for role password reconcile (attempt $i)..."
                 sleep 4
               done
+              # Superuser-only grant: USAGE on postgres_fdw must be issued by
+              # a superuser (or the FDW owner). The wrapper is installed by
+              # postInitTemplateSQL so this propagates to every DB created
+              # from template1 (preview, prod, future envs).
+              PGUSER="$PGSUPERUSER" PGPASSWORD="$PGSUPERPASSWORD" \
+                psql -v ON_ERROR_STOP=1 -c \
+                  'GRANT USAGE ON FOREIGN DATA WRAPPER postgres_fdw TO "{{ $env.migrateRole }}";'
               psql -v ON_ERROR_STOP=1 <<'SQL'
               CREATE SCHEMA IF NOT EXISTS trakrf AUTHORIZATION "{{ $env.migrateRole }}";
               -- Per-env isolation: deny default PUBLIC CONNECT and explicitly
