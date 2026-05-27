@@ -1,0 +1,32 @@
+{{- /*
+  Dedicated CNPG Cluster for the preview environment. Co-located with
+  trakrf-backend-preview + trakrf-ingester-preview in the trakrf-preview
+  namespace — no cross-namespace secret mirror.
+
+  GKE-only by structure: externalPreview.enabled and the inlineValues only
+  populate on cluster=gke. Other cluster overlays render an Application
+  with the chart defaults (externalPreview off, backups off).
+
+  automatedPrune=false + premium-rwo-retain StorageClass = stateful guardrail.
+  storage.createRetainClass=true here means this Application creates the
+  cluster-scoped SC exactly once.
+*/ -}}
+{{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db-preview\n  managedFieldsManagers:\n    - manager\n" -}}
+{{- $base := printf "fullnameOverride: trakrf-db-preview\ndatabase:\n  name: trakrf_preview\n  cnpgName: trakrf-preview\nroles:\n  app: trakrf-app-preview\n  migrate: trakrf-migrate-preview\nsecrets:\n  app: trakrf-app-preview-credentials\n  migrate: trakrf-migrate-preview-credentials\nstorage:\n  createRetainClass: true\nbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n  dumpPrefix: preview\n  cluster:\n    serverName: trakrf-db-preview\n" .Values.cnpgBackupBucket .Values.cnpgBackupsGcpServiceAccountEmail -}}
+{{- $values := $base -}}
+{{- if eq .Values.cluster "gke" -}}
+{{- $values = printf "%sexternalPreview:\n  enabled: true\n  loadBalancerIP: %q\n  sourceRanges:\n    - %q\n" $base .Values.dbPreviewIp .Values.breakglassSourceCidr -}}
+{{- end -}}
+{{- include "trakrf.application" (dict
+  "name" "trakrf-db-preview"
+  "path" "helm/trakrf-db"
+  "namespace" .Values.namespaces.trakrfPreview
+  "syncWave" "0"
+  "cluster" .Values.cluster
+  "repoURL" .Values.repoURL
+  "targetRevision" .Values.targetRevision
+  "destination" .Values.destination
+  "inlineValues" $values
+  "ignoreDifferences" $ignore
+  "automatedPrune" false
+) }}
