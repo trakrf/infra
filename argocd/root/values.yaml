@@ -19,6 +19,44 @@ namespaces:
   trakrfPreview: trakrf-preview
   trakrfProd: trakrf-prod
 
+# Per-env workload config consumed by trakrf-backend.yaml, trakrf-ingester.yaml,
+# AND trakrf-db.yaml (which ranges over this and emits one CNPG Cluster
+# Application per env). Adding a third env (whitelabel tenant, etc.) is a
+# values addition only — no template edits.
+#
+# dbHost                       — backend/ingester DSN host (`<service>.<ns>`).
+#                                Prod resolves to the shared Cluster in
+#                                trakrf-system; will flip when prod-half
+#                                stands up a dedicated Cluster.
+# ingressEnabled               — gates the preview-style ingress + IPAllowList.
+# mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
+# dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
+# dbCluster.namespace          — where the Cluster Application installs.
+# dbCluster.createRetainClass  — true on exactly one release (creates the
+#                                cluster-scoped premium-rwo-retain SC).
+# dbCluster.externalIp         — non-empty enables the external LB Service for
+#                                external psql clients (FDW dev endpoint).
+#                                Tofu-injected on GKE for envs that have one.
+envs:
+  preview:
+    dbHost: trakrf-db-preview-rw.trakrf-preview
+    ingressEnabled: true
+    mqttIp: ""
+    dbCluster:
+      fullnameOverride: trakrf-db-preview
+      namespace: trakrf-preview
+      createRetainClass: true
+      externalIp: ""
+  prod:
+    dbHost: trakrf-db-rw.trakrf-system
+    ingressEnabled: false
+    mqttIp: ""
+    dbCluster:
+      fullnameOverride: trakrf-db
+      namespace: trakrf-system
+      createRetainClass: false
+      externalIp: ""
+
 # Tofu output placeholders (populated by scripts/apply-root-app.sh at install time)
 certManagerIdentityClientId: ""
 tenantId: ""
@@ -41,17 +79,6 @@ cloudDnsZoneNameId: ""
 cnpgBackupBucket: ""
 cnpgBackupsGcpServiceAccountEmail: ""
 
-# TRA-828 — per-env MQTT broker LB IPs (Tofu-injected by scripts/apply-root-app.sh).
-# Blank on non-GKE clusters; consumed by argocd/root/templates/trakrf-ingester.yaml
-# to set per-env broker.loadBalancerIP. Hostname is computed per-env from a
-# fixed `mqtt.{env}.gke.trakrf.id` template (no per-env placeholder needed).
-mqttPreviewIp: ""
-mqttProdIp: ""
-
-# TRA-810 — Preview CNPG primary LB IP (Tofu-injected). GKE-only; consumed
-# by argocd/root/templates/trakrf-db.yaml to enable the external Service.
-# Hostname is fixed `db.preview.gke.trakrf.id` (no per-env placeholder).
-dbPreviewIp: ""
 
 # Preview ingress origin-lock — populated by scripts/apply-root-app.sh.
 # breakglassSourceCidr: resolved at apply time from a dyn DNS hostname

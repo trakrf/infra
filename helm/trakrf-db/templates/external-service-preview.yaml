@@ -24,14 +24,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.fullnameOverride | default "trakrf-db" }}-preview-external
+  name: {{ .Values.fullnameOverride | default "trakrf-db" }}-external
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: trakrf-db
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
     app.kubernetes.io/part-of: trakrf
-    app.kubernetes.io/component: preview-external
+    app.kubernetes.io/component: external
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
   annotations:
     # GCP networking: ensure regional LB, not global.

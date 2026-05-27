@@ -1,20 +1,19 @@
 {{- /*
-  Per-env init Job — applies schema + grants in each Postgres database.
-  Runs as a Helm post-install,post-upgrade hook so it lands after the
-  CNPG operator has created the managed roles and the Database CRDs
-  have reconciled. SQL is idempotent so a re-run on every chart
-  upgrade is a no-op when grants are already in place.
-
-  The Job connects to trakrf-db-rw as the env's migrate role, reading
-  the password from the same Secret CNPG manages for that role.
+  Init grants Job — applies the trakrf schema + grants in the Postgres
+  database. Runs as a Helm post-install,post-upgrade hook so it lands after
+  the CNPG operator has reconciled the managed roles + Database CR. SQL is
+  idempotent so a re-run on every chart upgrade is a no-op once grants are
+  in place.
 */ -}}
-{{- range $env := .Values.envs }}
----
+{{- $host := .Values.initGrantsJob.host -}}
+{{- if not $host -}}
+{{- $host = printf "%s-rw" (.Values.fullnameOverride | default "trakrf-db") -}}
+{{- end -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ printf "trakrf-db-init-grants-%s" $env.name }}
-  namespace: {{ $.Release.Namespace }}
+  name: {{ printf "%s-init-grants" (.Values.fullnameOverride | default "trakrf-db") }}
+  namespace: {{ .Release.Namespace }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "5"
@@ -23,51 +22,38 @@ spec:
   backoffLimit: 6
   template:
     metadata:
-      name: {{ printf "trakrf-db-init-grants-%s" $env.name }}
+      name: {{ printf "%s-init-grants" (.Values.fullnameOverride | default "trakrf-db") }}
     spec:
       restartPolicy: OnFailure
-      {{- with $.Values.affinity.nodeSelector }}
+      {{- with .Values.affinity.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $.Values.affinity.tolerations }}
+      {{- with .Values.affinity.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
         - name: psql
-          image: {{ $.Values.initGrantsJob.image | quote }}
+          image: {{ .Values.initGrantsJob.image | quote }}
           env:
             - name: PGHOST
-              value: {{ $.Values.initGrantsJob.host | quote }}
+              value: {{ $host | quote }}
             - name: PGPORT
               value: "5432"
             - name: PGSSLMODE
               value: require
             - name: PGDATABASE
-              value: {{ $env.database | quote }}
+              value: {{ .Values.database.name | quote }}
             - name: PGUSER
               valueFrom:
                 secretKeyRef:
-                  name: {{ $env.migrateSecret | quote }}
+                  name: {{ .Values.secrets.migrate | quote }}
                   key: username
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $env.migrateSecret | quote }}
-                  key: password
-            # Superuser creds — used only for the FDW USAGE grant below,
-            # which the migrate role cannot self-grant. Secret is created
-            # by CNPG when spec.enableSuperuserAccess is true.
-            - name: PGSUPERUSER
-              valueFrom:
-                secretKeyRef:
-                  name: {{ printf "%s-superuser" ($.Values.fullnameOverride | default "trakrf-db") | quote }}
-                  key: username
-            - name: PGSUPERPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ printf "%s-superuser" ($.Values.fullnameOverride | default "trakrf-db") | quote }}
+                  name: {{ .Values.secrets.migrate | quote }}
                   key: password
           command:
             - /bin/sh
@@ -83,56 +69,21 @@ spec:
                 echo "waiting for role password reconcile (attempt $i)..."
                 sleep 4
               done
-              # Superuser-only grant: USAGE on postgres_fdw must be issued by
-              # a superuser (or the FDW owner). The wrapper is installed by
-              # postInitTemplateSQL so this propagates to every DB created
-              # from template1 (preview, prod, future envs).
-              PGUSER="$PGSUPERUSER" PGPASSWORD="$PGSUPERPASSWORD" \
-                psql -v ON_ERROR_STOP=1 -c \
-                  'GRANT USAGE ON FOREIGN DATA WRAPPER postgres_fdw TO "{{ $env.migrateRole }}";'
               psql -v ON_ERROR_STOP=1 <<'SQL'
-              CREATE SCHEMA IF NOT EXISTS trakrf AUTHORIZATION "{{ $env.migrateRole }}";
-              -- Per-env isolation: deny default PUBLIC CONNECT and explicitly
-              -- grant only to this env's app role. Without the REVOKE, any
-              -- authenticated role in the cluster could CONNECT to this DB.
-              REVOKE CONNECT ON DATABASE {{ $env.database }} FROM PUBLIC;
-              GRANT CONNECT ON DATABASE {{ $env.database }} TO "{{ $env.appRole }}";
-              GRANT USAGE ON SCHEMA trakrf TO "{{ $env.appRole }}";
-              -- Retroactive grants on already-existing objects. ALTER DEFAULT
-              -- PRIVILEGES (below) only affects FUTURE objects, so on its own
-              -- it can't recover from a DROP SCHEMA CASCADE flow: dropping the
-              -- schema wipes pg_default_acl entries for that schema, and any
-              -- objects created BEFORE the policy is re-installed inherit no
-              -- grants. The ON ALL ... statements here are idempotent and
-              -- backfill the missing grants when this Job re-runs after a
-              -- schema rebuild.
+              CREATE SCHEMA IF NOT EXISTS trakrf AUTHORIZATION "{{ .Values.roles.migrate }}";
+              REVOKE CONNECT ON DATABASE {{ .Values.database.name }} FROM PUBLIC;
+              GRANT CONNECT ON DATABASE {{ .Values.database.name }} TO "{{ .Values.roles.app }}";
+              GRANT USAGE ON SCHEMA trakrf TO "{{ .Values.roles.app }}";
               GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA trakrf
-                TO "{{ $env.appRole }}";
+                TO "{{ .Values.roles.app }}";
               GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA trakrf
-                TO "{{ $env.appRole }}";
+                TO "{{ .Values.roles.app }}";
               GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA trakrf
-                TO "{{ $env.appRole }}";
-              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
-                GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{{ $env.appRole }}";
-              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
-                GRANT USAGE, SELECT ON SEQUENCES TO "{{ $env.appRole }}";
-              -- EXECUTE on functions: required for trigger helpers (e.g.
-              -- trakrf.generate_obfuscated_id called by entity-table INSERT
-              -- triggers). Without this the app role can read/write tables
-              -- but INSERTs that touch a trigger fail with "permission
-              -- denied for function ...".
-              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ $env.migrateRole }}" IN SCHEMA trakrf
-                GRANT EXECUTE ON FUNCTIONS TO "{{ $env.appRole }}";
-              -- NOTE: ALTER DATABASE / ALTER ROLE for app.current_org_id requires
-              -- SUPERUSER (Postgres restricts customizable parameter writes to
-              -- superusers for unregistered GUCs). The migrate role is the DB
-              -- owner but still can't set this — neither can the app role on
-              -- itself. The original postInitApplicationSQL worked only because
-              -- initdb runs as superuser. For now, this setting is applied
-              -- manually post-cutover via `kubectl exec ... psql -U postgres`.
-              -- TODO(TRA-#): move app.current_org_id default into backend PG_URL
-              -- options (`-c app.current_org_id=0`) so no DB-level setting is
-              -- needed, OR run a one-shot Job that connects via the CNPG-managed
-              -- superuser secret.
+                TO "{{ .Values.roles.app }}";
+              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ .Values.roles.migrate }}" IN SCHEMA trakrf
+                GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "{{ .Values.roles.app }}";
+              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ .Values.roles.migrate }}" IN SCHEMA trakrf
+                GRANT USAGE, SELECT ON SEQUENCES TO "{{ .Values.roles.app }}";
+              ALTER DEFAULT PRIVILEGES FOR ROLE "{{ .Values.roles.migrate }}" IN SCHEMA trakrf
+                GRANT EXECUTE ON FUNCTIONS TO "{{ .Values.roles.app }}";
               SQL
-{{- end }}

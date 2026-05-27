@@ -146,11 +146,11 @@ helm upgrade --install trakrf-root argocd/root \
   --set certManagerGcpServiceAccountEmail="$GCP_CM_SA_EMAIL" \
   --set cloudDnsZoneNameApp="$GCP_DNS_ZONE_NAME_APP" \
   --set cloudDnsZoneNameId="$GCP_DNS_ZONE_NAME_ID" \
-  --set mqttPreviewIp="$MQTT_PREVIEW_IP" \
-  --set mqttProdIp="$MQTT_PROD_IP" \
+  --set envs.preview.mqttIp="$MQTT_PREVIEW_IP" \
+  --set envs.prod.mqttIp="$MQTT_PROD_IP" \
   --set cnpgBackupBucket="$CNPG_BACKUP_BUCKET" \
   --set cnpgBackupsGcpServiceAccountEmail="$CNPG_BACKUPS_GSA_EMAIL" \
-  --set dbPreviewIp="$DB_PREVIEW_IP" \
+  --set envs.preview.dbCluster.externalIp="$DB_PREVIEW_IP" \
   --set breakglassSourceCidr="$BREAKGLASS_CIDR" \
   --set-json cloudflareIpv4Cidrs="$CF_IPV4_JSON" \
   --set-json cloudflareIpv6Cidrs="$CF_IPV6_JSON" \

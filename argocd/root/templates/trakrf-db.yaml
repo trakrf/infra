@@ -1,32 +1,37 @@
-{{- /* CNPG operator fills runtime defaults on the Cluster spec
-       (connectionLimit, inRoles, etc.). Ignore fields owned by the
-       operator's field manager to silence cosmetic OutOfSync. */ -}}
-{{- /* CNPG's Go client uses the default field manager name "manager".
-       Ignoring fields owned by it filters out all operator-filled
-       defaults (podAntiAffinityType, connectionLimit, inherit, etc.). */ -}}
-{{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - manager\n" -}}
-{{- /* Inline values for the trakrf-db chart:
-       1. backups.{bucket,gcpServiceAccountEmail} — wired on every cluster.
-          Blank strings on non-GKE are fine; the chart's backups.enabled
-          defaults to false and is only flipped on in values-gke.yaml.
-       2. externalPreview — GKE-only LoadBalancer Service for the preview
-          CNPG primary so platform CC can iterate on the M3 FDW pull
-          migration with direct psql access. IP comes from the Tofu
-          static address (db_preview_ip); source allowlist reuses the
-          same breakglass dyn-DNS CIDR that gates the preview ingress. */ -}}
-{{- $values := printf "backups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" .Values.cnpgBackupBucket .Values.cnpgBackupsGcpServiceAccountEmail -}}
-{{- if eq .Values.cluster "gke" -}}
-{{- $values = printf "%sexternalPreview:\n  enabled: true\n  loadBalancerIP: %q\n  sourceRanges:\n    - %q\n" $values .Values.dbPreviewIp .Values.breakglassSourceCidr -}}
-{{- end -}}
+{{- /*
+  One CNPG Cluster Application per env. Per-env config (Cluster name,
+  namespace, retain SC, external LB IP) lives in .Values.envs.<env>.dbCluster
+  at the root chart values level — the template has zero env-name string
+  conditionals. Adding a third env (whitelabel tenant, etc.) is a values
+  addition only.
+
+  automatedPrune=false: stateful guardrail. Combined with the
+  premium-rwo-retain StorageClass on the PVC, an accidental prune or
+  Cluster CR delete cannot destroy data.
+
+  externalIp is non-empty only on envs that need an external psql endpoint
+  (today: preview, for the FDW pull-migration dev workflow). The block is
+  GKE-only by structure: tofu sets the IP on GKE, leaves it blank elsewhere.
+*/ -}}
+{{- range $env, $cfg := $.Values.envs }}
+{{- $dc := $cfg.dbCluster }}
+{{- $ignore := printf "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: %s\n  managedFieldsManagers:\n    - manager\n" $dc.fullnameOverride }}
+{{- $values := printf "fullnameOverride: %s\nstorage:\n  createRetainClass: %t\nbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" $dc.fullnameOverride $dc.createRetainClass $.Values.cnpgBackupBucket $.Values.cnpgBackupsGcpServiceAccountEmail }}
+{{- if and $dc.externalIp (eq $.Values.cluster "gke") }}
+{{- $values = printf "%sexternalPreview:\n  enabled: true\n  loadBalancerIP: %q\n  sourceRanges:\n    - %q\n" $values $dc.externalIp $.Values.breakglassSourceCidr }}
+{{- end }}
+---
 {{- include "trakrf.application" (dict
-  "name" "trakrf-db"
+  "name" $dc.fullnameOverride
   "path" "helm/trakrf-db"
-  "namespace" .Values.namespaces.trakrfSystem
+  "namespace" $dc.namespace
   "syncWave" "0"
-  "cluster" .Values.cluster
-  "repoURL" .Values.repoURL
-  "targetRevision" .Values.targetRevision
-  "destination" .Values.destination
+  "cluster" $.Values.cluster
+  "repoURL" $.Values.repoURL
+  "targetRevision" $.Values.targetRevision
+  "destination" $.Values.destination
   "inlineValues" $values
   "ignoreDifferences" $ignore
+  "automatedPrune" false
 ) }}
+{{- end }}

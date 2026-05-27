@@ -17,15 +17,27 @@ resource "google_storage_bucket" "cnpg_backups" {
     enabled = false
   }
 
-  # Phase 1 retention: delete pg_dump artifacts > 14d. Phase 2 CNPG paths
-  # under `trakrf-db/{base,wals}/...` are NOT covered here — CNPG manages
-  # those via spec.backup.retentionPolicy, which deletes base + WAL
-  # atomically. A blanket age-based rule would orphan WAL segments and
-  # break PITR.
+  # Phase 1 retention: delete pg_dump artifacts > 14d.
+  #
+  # Path layout: gs://<bucket>/<cluster-name>/dump/YYYY/MM/DD/HHMM.pgdump
+  # where <cluster-name> is the CNPG Cluster fullnameOverride (e.g.
+  # trakrf-db, trakrf-db-preview). Phase 2 CNPG paths under
+  # <cluster-name>/{base,wals}/... are NOT covered — CNPG manages those
+  # via spec.backup.retentionPolicy which deletes base + WAL atomically.
+  # A blanket age-based rule would orphan WAL segments and break PITR.
+  #
+  # Legacy "preview/" / "prod/" prefixes from the old multi-env shared
+  # cluster also age out, so any dumps still under those paths are
+  # cleaned up automatically within 14d.
   lifecycle_rule {
     condition {
-      age            = 14
-      matches_prefix = ["preview/", "prod/"]
+      age = 14
+      matches_prefix = [
+        "trakrf-db/dump/",
+        "trakrf-db-preview/dump/",
+        "preview/",
+        "prod/",
+      ]
     }
     action {
       type = "Delete"
@@ -84,4 +96,19 @@ resource "google_service_account_iam_member" "cnpg_backups_wi_restore_test" {
   service_account_id = google_service_account.cnpg_backups.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-system/trakrf-restore-test]"
+}
+
+# CNPG preview Cluster pods (phase-2 WAL archiving + base backups).
+# Cluster's pod SA is named after the Cluster (trakrf-db-preview).
+resource "google_service_account_iam_member" "cnpg_backups_wi_cluster_preview" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-preview/trakrf-db-preview]"
+}
+
+# Preview pg_dump CronJob KSA (phase-1 logical backup).
+resource "google_service_account_iam_member" "cnpg_backups_wi_pgdump_preview" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-preview/cnpg-backups]"
 }

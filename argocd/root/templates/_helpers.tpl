@@ -22,6 +22,9 @@
   - `extraAnnotations` (optional) is a pre-rendered YAML string of
     additional metadata.annotations — e.g. ArgoCD Image Updater
     annotations on the preview Application. Empty string skips.
+  - `automatedPrune` (optional) overrides syncPolicy.automated.prune.
+    Defaults to true. Set false for stateful resources (CNPG Clusters)
+    so an accidental prune cannot delete the database.
   - Upstream charts (Application pointing at e.g. charts.jetstack.io)
     do NOT use this helper — they emit their full source block inline
     since they can't reference valueFiles inside a different repo.
@@ -62,7 +65,7 @@ spec:
   {{- end }}
   syncPolicy:
     automated:
-      prune: true
+      prune: {{ if hasKey . "automatedPrune" }}{{ .automatedPrune }}{{ else }}true{{ end }}
       selfHeal: true
     syncOptions:
       - CreateNamespace=true

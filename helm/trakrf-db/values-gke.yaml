@@ -4,7 +4,7 @@
 # headroom over the standard-rwo (pd-balanced) default.
 
 storage:
-  class: premium-rwo
+  class: premium-rwo-retain
 
 # GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM node pools
 # (T2A/T2D/Axion). AKS Ubuntu does not. CNPG Cluster needs the toleration
