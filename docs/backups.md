@@ -2,14 +2,20 @@
 
 ## What's covered
 
-Daily logical `pg_dump` of every env database on the shared CNPG cluster
-to GCS. Restore granularity: per env database, per day (or whenever the
-last dump ran). Restore depth: 14 days (GCS lifecycle policy).
+Two layers on the shared CNPG cluster, both writing to the same GCS
+bucket:
 
-**Not** covered (yet):
+- **Phase 1 — logical per-DB dumps.** Daily `pg_dump` of every env
+  database. Restore granularity: per env database, per day (or whenever
+  the last dump ran). Restore depth: 14 days (GCS lifecycle policy).
+- **Phase 2 — physical WAL archiving + scheduled base backups.**
+  Whole-cluster point-in-time recovery (PITR) anywhere inside the
+  14-day window. Granularity is the whole Cluster — physical PITR
+  cannot recover one env database without the other (see Phase 2
+  section below).
 
-- Continuous WAL archiving or point-in-time recovery (PITR). Tracked
-  separately as Phase 2 of the same effort.
+**Not** covered:
+
 - Cross-provider/cross-region DR.
 - Encryption with customer-managed keys (default Google-managed
   encryption is in use).
