@@ -34,6 +34,13 @@ cloudDnsZoneNameApp: ""
 cloudDnsZoneNameId: ""
 # Note: traefikLbIp (above) is shared — both AKS and GKE use it for their static LB IPs.
 
+# CNPG Phase 1 logical backups — populated by scripts/apply-root-app.sh
+# from terraform/gcp outputs. Blank on non-GKE clusters; consumed by
+# argocd/root/templates/trakrf-db.yaml to set backups.* in the
+# trakrf-db chart.
+cnpgBackupBucket: ""
+cnpgBackupsGcpServiceAccountEmail: ""
+
 # TRA-828 — per-env MQTT broker LB IPs (Tofu-injected by scripts/apply-root-app.sh).
 # Blank on non-GKE clusters; consumed by argocd/root/templates/trakrf-ingester.yaml
 # to set per-env broker.loadBalancerIP. Hostname is computed per-env from a

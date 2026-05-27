@@ -16,3 +16,8 @@ affinity:
       operator: Equal
       value: arm64
       effect: NoSchedule
+
+backups:
+  enabled: true
+  # bucket + gcpServiceAccountEmail are injected by the root chart at
+  # install time from tofu outputs.

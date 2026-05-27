@@ -101,7 +101,21 @@ output "mqtt_prod_ip" {
   value       = google_compute_address.mqtt_prod.address
 }
 
-# TRA-810 — Preview CNPG primary external IP. Consumed by:
+# CNPG logical backups — consumed by:
+#   - scripts/apply-root-app.sh (passes to argocd/root chart)
+#   - justfile recipe db-restore-test (reads bucket name)
+
+output "cnpg_backup_bucket" {
+  description = "GCS bucket holding per-env pg_dump dumps (gs://<this>/<env>/...)"
+  value       = google_storage_bucket.cnpg_backups.name
+}
+
+output "cnpg_backups_service_account_email" {
+  description = "GCP SA email — used as the iam.gke.io/gcp-service-account annotation on the trakrf-system/cnpg-backups KSA"
+  value       = google_service_account.cnpg_backups.email
+}
+
+# Preview CNPG primary external IP. Consumed by:
 #   - terraform/gcp/dns.tf A record for db.preview.gke.trakrf.id
 #   - scripts/apply-root-app.sh -> argocd/root values -> trakrf-db preview LB IP
 output "db_preview_ip" {

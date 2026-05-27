@@ -67,8 +67,32 @@ affinity:
   nodeSelector: {}
   tolerations: []
 
-# TRA-810 — External LoadBalancer Service for the preview CNPG primary so
-# external psql clients can reach it for FDW pull-migration development.
+# Phase 1 logical per-DB dumps to GCS. Off by default — only the GKE
+# overlay turns it on (values-gke.yaml). Bucket name + GSA email are
+# injected by the root chart from tofu outputs (see
+# argocd/root/templates/trakrf-db.yaml).
+backups:
+  enabled: false
+  bucket: ""
+  gcpServiceAccountEmail: ""
+  schedule: "0 9 * * *"   # daily @ 09:00 UTC
+  # Retention is enforced by the GCS lifecycle rule on the bucket
+  # (terraform/gcp/cnpg_backups.tf). retentionDays here is documentation
+  # only — changing it does NOT change behavior.
+  retentionDays: 14
+  # Two-container pattern. The CNPG postgres image runs pg_dump into an
+  # emptyDir volume; a tiny curl image uploads to GCS via the JSON API
+  # using a Workload Identity access token from the GKE metadata server.
+  # We use curl (not gcloud) because Google does not publish a multi-arch
+  # google/cloud-sdk image — the amd64-only image crashes on ARM nodes.
+  pgDumpImage: ghcr.io/cloudnative-pg/postgresql:17.2
+  uploadImage: curlimages/curl:8.10.1
+  # K8s SA name in the chart's namespace. Must match the WI subject in
+  # terraform/gcp/cnpg_backups.tf (trakrf-system/cnpg-backups).
+  serviceAccountName: cnpg-backups
+
+# External LoadBalancer Service for the preview CNPG primary so external
+# psql clients can reach it for FDW pull-migration development.
 # Disabled by default; the GKE root chart overlay sets enabled=true and
 # wires loadBalancerIP + sourceRanges from tofu outputs.
 externalPreview:
