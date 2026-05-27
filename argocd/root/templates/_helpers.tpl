@@ -73,23 +73,28 @@ spec:
 {{- end -}}
 
 {{/*
-  trakrf-backend.previewIngressValues — YAML block injected into the
-  trakrf-backend-preview Application's inline helm.values. Renders the
-  two routes (direct gke.trakrf.id + CF-proxied trakrf.id) and the two
-  IPAllowList middlewares, sourcing IP CIDRs from root-chart values
-  populated by scripts/apply-root-app.sh.
+  trakrf-backend.ingressValues — YAML block injected into a trakrf-backend
+  Application's inline helm.values. Renders the GKE-direct route
+  `app.<env>.gke.trakrf.id` (always when ingress is on) and optionally the
+  CF grey-cloud route `app.<env>.trakrf.id` (gated on .appTrakrfIdRouteEnabled).
+  Both Cloudflare/breakglass IPAllowList middlewares are always emitted —
+  they're cheap and future-proof for the Saturday `app.trakrf.id` route.
 
-  Caller MUST pass the root Chart render context (`$` from a template
-  using `.Values`) — the helper reads .Values.breakglassSourceCidr,
-  .Values.cloudflareIpv4Cidrs, .Values.cloudflareIpv6Cidrs.
+  Caller MUST pass a dict with:
+    env                       — env slug ("preview", "prod")
+    appTrakrfIdRouteEnabled   — bool; true on preview today, false on prod
+                                (prod's CF grey-cloud route lands Saturday)
+    breakglassSourceCidr      — root values pass-through
+    cloudflareIpv4Cidrs       — root values pass-through (list)
+    cloudflareIpv6Cidrs       — root values pass-through (list)
 */}}
-{{- define "trakrf-backend.previewIngressValues" -}}
+{{- define "trakrf-backend.ingressValues" -}}
 ingress:
   enabled: true
   routes:
     - name: gke-direct
-      host: app.preview.gke.trakrf.id
-      secretName: app-preview-gke-trakrf-id-tls
+      host: app.{{ .env }}.gke.trakrf.id
+      secretName: app-{{ .env }}-gke-trakrf-id-tls
       cert:
         issue: true
         issuer: letsencrypt-prod
@@ -97,14 +102,15 @@ ingress:
         - name: default-chain
           namespace: traefik
         - name: breakglass-allow
-    # `app.preview.trakrf.id` runs grey-cloud (CF DNS-only) because CF Universal
+    {{- if .appTrakrfIdRouteEnabled }}
+    # `app.<env>.trakrf.id` runs grey-cloud (CF DNS-only) because CF Universal
     # SSL (Free tier) can't issue an edge cert for two-label hosts under
     # trakrf.id. Per-host LE cert via HTTP-01 at origin; same breakglass
     # IPAllowList as the gke-direct route. The Origin Cert + cloudflare-allow
     # middleware live on for future use when prod cutover lands ACM/Total TLS.
     - name: trakrf-id-direct
-      host: app.preview.trakrf.id
-      secretName: app-preview-trakrf-id-tls
+      host: app.{{ .env }}.trakrf.id
+      secretName: app-{{ .env }}-trakrf-id-tls
       cert:
         issue: true
         issuer: letsencrypt-prod
@@ -112,18 +118,19 @@ ingress:
         - name: default-chain
           namespace: traefik
         - name: breakglass-allow
+    {{- end }}
   middlewares:
     breakglass:
       enabled: true
       sourceRange:
-        - {{ .Values.breakglassSourceCidr | quote }}
+        - {{ .breakglassSourceCidr | quote }}
     cloudflare:
       enabled: true
       sourceRange:
-        {{- range .Values.cloudflareIpv4Cidrs }}
+        {{- range .cloudflareIpv4Cidrs }}
         - {{ . | quote }}
         {{- end }}
-        {{- range .Values.cloudflareIpv6Cidrs }}
+        {{- range .cloudflareIpv6Cidrs }}
         - {{ . | quote }}
         {{- end }}
 {{- end -}}
