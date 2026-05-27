@@ -1,9 +1,13 @@
 {{- /*
-  One CNPG Cluster Application per env. Per-env config (Cluster name,
-  namespace, retain SC, external LB IP) lives in .Values.envs.<env>.dbCluster
-  at the root chart values level — the template has zero env-name string
-  conditionals. Adding a third env (whitelabel tenant, etc.) is a values
-  addition only.
+  One CNPG Cluster Application per env where .dbCluster.enabled is true.
+  Per-env config (Cluster name, namespace, retain SC, external LB IP)
+  lives in .Values.envs.<env>.dbCluster at the root chart values level —
+  the template has zero env-name string conditionals. Adding or removing
+  a CNPG Cluster is a values change only.
+
+  envs.prod.dbCluster.enabled defaults to false: the shared trakrf-db
+  Cluster has been retired; the prod-half cutover will stand up a new
+  dedicated prod Cluster in the trakrf-prod ns and flip the flag back on.
 
   automatedPrune=false: stateful guardrail. Combined with the
   premium-rwo-retain StorageClass on the PVC, an accidental prune or
@@ -15,6 +19,7 @@
 */ -}}
 {{- range $env, $cfg := $.Values.envs }}
 {{- $dc := $cfg.dbCluster }}
+{{- if $dc.enabled }}
 {{- $ignore := printf "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: %s\n  managedFieldsManagers:\n    - manager\n" $dc.fullnameOverride }}
 {{- $values := printf "fullnameOverride: %s\nstorage:\n  createRetainClass: %t\nbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" $dc.fullnameOverride $dc.createRetainClass $.Values.cnpgBackupBucket $.Values.cnpgBackupsGcpServiceAccountEmail }}
 {{- if and $dc.externalIp (eq $.Values.cluster "gke") }}
@@ -34,4 +39,5 @@
   "ignoreDifferences" $ignore
   "automatedPrune" false
 ) }}
+{{- end }}
 {{- end }}
