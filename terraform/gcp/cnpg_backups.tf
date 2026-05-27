@@ -17,9 +17,15 @@ resource "google_storage_bucket" "cnpg_backups" {
     enabled = false
   }
 
+  # Phase 1 retention: delete pg_dump artifacts > 14d. Phase 2 CNPG paths
+  # under `trakrf-db/{base,wals}/...` are NOT covered here — CNPG manages
+  # those via spec.backup.retentionPolicy, which deletes base + WAL
+  # atomically. A blanket age-based rule would orphan WAL segments and
+  # break PITR.
   lifecycle_rule {
     condition {
-      age = 14
+      age            = 14
+      matches_prefix = ["preview/", "prod/"]
     }
     action {
       type = "Delete"
@@ -49,4 +55,22 @@ resource "google_service_account_iam_member" "cnpg_backups_wi" {
   service_account_id = google_service_account.cnpg_backups.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-system/cnpg-backups]"
+}
+
+# Phase 2: the CNPG Cluster pod SA also needs to impersonate this GSA so
+# the live cluster can write WAL + base backups to the same bucket. CNPG
+# names the pod SA after the Cluster (trakrf-db).
+resource "google_service_account_iam_member" "cnpg_backups_wi_cluster" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-system/trakrf-db]"
+}
+
+# Phase 2: scratch Cluster used by `just db-restore-pitr-test` is always
+# named trakrf-restore-test so this binding is reusable across runs
+# without re-applying tofu.
+resource "google_service_account_iam_member" "cnpg_backups_wi_restore_test" {
+  service_account_id = google_service_account.cnpg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[trakrf-system/trakrf-restore-test]"
 }
