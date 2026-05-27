@@ -260,86 +260,45 @@ Add `storage.k8s.io/StorageClass` to `clusterResourceWhitelist`. Without this, t
 
 ## Bootstrap & cutover order (operational)
 
-The chart refactor + new Application + root template changes ship in one PR. Order of operations around merge:
+The chart refactor + new Application + root template changes ship in one PR.
+**Nothing on the shared Cluster is sacred pre-merge.** `trakrf_preview` is
+throwaway (we re-pull from TSC), `trakrf_prod` is empty until the prod
+cutover, and the auto-prune-off + Retain-PV guardrails only become
+load-bearing AFTER real data lands on Saturday. So the operational sequence
+is the bare minimum: bring up the new preview Cluster cleanly, let Argo
+reconcile the shared Cluster to the new chart shape, blow away anything
+that refuses to settle.
 
 ```
-PRE-MERGE — shared Cluster cleanup + rename (kubectl + psql against existing trakrf-db)
-  1. Patch the shared Cluster PV reclaimPolicy → Retain.
-       PV=$(kubectl get pvc -n trakrf-system -l cnpg.io/cluster=trakrf-db \
-             -o jsonpath='{.items[0].spec.volumeName}')
-       kubectl patch pv "$PV" \
-         -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
-
-  2. Drop preview state from the shared Cluster (legacy multi-env objects):
-       kubectl -n trakrf-system exec trakrf-db-1 -- psql -U postgres <<SQL
-         DROP DATABASE IF EXISTS trakrf_preview;
-         DROP ROLE IF EXISTS "trakrf-app-preview";
-         DROP ROLE IF EXISTS "trakrf-migrate-preview";
-       SQL
-       kubectl -n trakrf-system delete secret \
-         trakrf-app-preview-credentials trakrf-migrate-preview-credentials \
-         --ignore-not-found
-
-  3. Rename prod-side objects to flat names so the new chart shape matches:
-       kubectl -n trakrf-system exec trakrf-db-1 -- psql -U postgres <<SQL
-         ALTER DATABASE trakrf_prod RENAME TO trakrf;
-         ALTER ROLE "trakrf-app-prod" RENAME TO "trakrf-app";
-         ALTER ROLE "trakrf-migrate-prod" RENAME TO "trakrf-migrate";
-       SQL
-     (Safe because trakrf_prod is empty until the Sat 2026-05-30 prod cutover.)
-
-  4. Delete the legacy *-prod-credentials Secrets in trakrf-system; just
-     db-secrets will recreate them under the new flat names in step 5.
-       kubectl -n trakrf-system delete secret \
-         trakrf-app-prod-credentials trakrf-migrate-prod-credentials \
-         --ignore-not-found
-
-  5. `just db-secrets` (new shape) creates:
-       - trakrf-preview ns: trakrf-app-credentials + trakrf-migrate-credentials
-         (native, no reflector annotations)
-       - trakrf-system ns: trakrf-app-credentials + trakrf-migrate-credentials
-         (reflector-annotated for trakrf-prod ns)
-
-  6. Confirm TSC preview is reachable and the FDW pull script (platform
-     PR #413) is runnable.
-
-  7. Snapshot current preview row counts from TSC for the post-migration diff.
+PRE-MERGE
+  1. just db-secrets (new shape) creates the flat-named Secrets:
+       - trakrf-preview ns: trakrf-{app,migrate}-credentials (native)
+       - trakrf-system ns:  trakrf-{app,migrate}-credentials (reflector-annotated)
+  2. Snapshot TSC preview row counts for the post-migration diff.
 
 MERGE
-  8. PR merges. `scripts/apply-root-app.sh gke` re-renders the root chart.
 
-POST-MERGE — Argo reconciles
-  9. AppProject permits StorageClass (kubectl-applied, not synced).
-       kubectl apply -f argocd/projects/trakrf.yaml
- 10. tofu apply for the 2 new WI bindings + lifecycle prefix update.
-       just gcp
- 11. trakrf-db-preview Application creates StorageClass premium-rwo-retain
-     + Cluster + Database + managed roles (refs Secrets from step 5)
-     + pg_dump CronJob + ScheduledBackup, all in trakrf-preview ns.
- 12. Shared trakrf-db Application reconciles to the new chart shape:
-       - Database CR renamed (trakrf-prod → trakrf); CNPG sees existing PG DB
-         (we renamed in step 3) and ensures present — no-op
-       - managed.roles list updated to trakrf-app + trakrf-migrate; CNPG sees
-         existing PG roles (renamed in step 3) and ensures present — no-op
-       - passwordSecret refs flip to trakrf-{app,migrate}-credentials; CNPG
-         reads the new Secrets (created step 5) and may set new passwords
-       - pg_dump CronJob's upload path flips to trakrf-db/dump/...
- 13. trakrf-backend-preview + trakrf-ingester-preview redeploy with new DSN
-     (trakrf-db-preview-rw.trakrf-preview, db=trakrf, user=trakrf-app).
-     CrashLoopBackOff briefly until step 14 populates data.
- 14. Backend-prod + ingester-prod redeploy with new DSN (still
-     trakrf-db-rw.trakrf-system, but db=trakrf and user=trakrf-app — the
-     renamed names). CNPG may briefly out-of-sync the role password until
-     the next managed.roles reconcile; reloader bounces apps when the
-     Secret content settles.
-
-MIGRATION + VERIFY (preview half)
- 15. Follow `docs/db-migration.md` with `<env>=preview` end-to-end:
-       schema bootstrap → FDW pull from TSC preview → row-count diff →
-       FDW teardown → rollout-restart → negative-auth test.
+POST-MERGE
+  3. kubectl apply -f argocd/projects/trakrf.yaml          # StorageClass permit
+  4. just gcp                                              # WI bindings + lifecycle prefix
+  5. scripts/apply-root-app.sh gke                         # re-render root chart
+  6. Watch Argo reconcile. The new trakrf-db-preview Application comes up
+     clean. The shared trakrf-db Application reconciles to the new chart
+     shape — CNPG manages the role/Database rename in-place IF it can; if
+     it gets stuck on role-removal (old role still owns objects), nuke and
+     rebuild:
+       kubectl -n trakrf-system delete cluster trakrf-db
+       kubectl -n trakrf-system delete pvc -l cnpg.io/cluster=trakrf-db
+       # Argo recreates a fresh Cluster on next reconcile.
+  7. Run docs/db-migration.md end-to-end for <env>=preview.
+  8. Verify (Application Synced+Healthy, negative-auth fails, row-count diff
+     empty).
 ```
 
-**Idempotency.** All pre-merge SQL is guarded with `IF EXISTS` / `IF NOT EXISTS` where possible; re-running them is safe. The kubectl Secret deletes use `--ignore-not-found`.
+The PG rename / Secret content surgery I considered for "preserve everything"
+is unnecessary while the shared Cluster has no real data. After the Saturday
+prod cutover the guardrails on the chart (auto-prune off, PV Retain) come
+into play; until then, just rebuild whatever doesn't settle.
 
 ### Decision: who owns the credential Secret
 

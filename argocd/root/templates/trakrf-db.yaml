@@ -1,28 +1,37 @@
 {{- /*
-  Shared trakrf-db Cluster. Hosts the prod DB in trakrf-system until the
-  prod-half cutover ticket retires this Cluster and stands up a dedicated
-  trakrf-db-prod in trakrf-prod ns.
+  One CNPG Cluster Application per env. Per-env config (Cluster name,
+  namespace, retain SC, external LB IP) lives in .Values.envs.<env>.dbCluster
+  at the root chart values level — the template has zero env-name string
+  conditionals. Adding a third env (whitelabel tenant, etc.) is a values
+  addition only.
 
-  Chart defaults are unsuffixed (database=trakrf, roles=trakrf-{app,migrate})
-  — same shape as the new trakrf-db-preview release. Only fullnameOverride,
-  backups bucket/gsa, and backups.cluster.serverName need overriding.
+  automatedPrune=false: stateful guardrail. Combined with the
+  premium-rwo-retain StorageClass on the PVC, an accidental prune or
+  Cluster CR delete cannot destroy data.
 
-  automatedPrune=false: stateful guardrail. Combined with the underlying
-  PV's reclaimPolicy=Retain (one-time kubectl patch on the existing PV),
-  neither an accidental prune nor a Cluster CR delete will destroy data.
+  externalIp is non-empty only on envs that need an external psql endpoint
+  (today: preview, for the FDW pull-migration dev workflow). The block is
+  GKE-only by structure: tofu sets the IP on GKE, leaves it blank elsewhere.
 */ -}}
-{{- $ignore := "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: trakrf-db\n  managedFieldsManagers:\n    - manager\n" -}}
-{{- $values := printf "fullnameOverride: trakrf-db\nbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" .Values.cnpgBackupBucket .Values.cnpgBackupsGcpServiceAccountEmail -}}
+{{- range $env, $cfg := $.Values.envs }}
+{{- $dc := $cfg.dbCluster }}
+{{- $ignore := printf "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: %s\n  managedFieldsManagers:\n    - manager\n" $dc.fullnameOverride }}
+{{- $values := printf "fullnameOverride: %s\nstorage:\n  createRetainClass: %t\nbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" $dc.fullnameOverride $dc.createRetainClass $.Values.cnpgBackupBucket $.Values.cnpgBackupsGcpServiceAccountEmail }}
+{{- if and $dc.externalIp (eq $.Values.cluster "gke") }}
+{{- $values = printf "%sexternalPreview:\n  enabled: true\n  loadBalancerIP: %q\n  sourceRanges:\n    - %q\n" $values $dc.externalIp $.Values.breakglassSourceCidr }}
+{{- end }}
+---
 {{- include "trakrf.application" (dict
-  "name" "trakrf-db"
+  "name" $dc.fullnameOverride
   "path" "helm/trakrf-db"
-  "namespace" .Values.namespaces.trakrfSystem
+  "namespace" $dc.namespace
   "syncWave" "0"
-  "cluster" .Values.cluster
-  "repoURL" .Values.repoURL
-  "targetRevision" .Values.targetRevision
-  "destination" .Values.destination
+  "cluster" $.Values.cluster
+  "repoURL" $.Values.repoURL
+  "targetRevision" $.Values.targetRevision
+  "destination" $.Values.destination
   "inlineValues" $values
   "ignoreDifferences" $ignore
   "automatedPrune" false
 ) }}
+{{- end }}

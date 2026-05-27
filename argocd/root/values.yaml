@@ -19,29 +19,43 @@ namespaces:
   trakrfPreview: trakrf-preview
   trakrfProd: trakrf-prod
 
-# Per-env workload config consumed by trakrf-backend.yaml + trakrf-ingester.yaml.
-# Adding a third env (whitelabel tenant, etc.) means adding a key here and a
-# matching CNPG Cluster Application elsewhere — no template edits needed.
+# Per-env workload config consumed by trakrf-backend.yaml, trakrf-ingester.yaml,
+# AND trakrf-db.yaml (which ranges over this and emits one CNPG Cluster
+# Application per env). Adding a third env (whitelabel tenant, etc.) is a
+# values addition only — no template edits.
 #
-# dbHost           — DSN host (`<service>.<ns>` form). Prod still resolves to
-#                    the shared Cluster in trakrf-system; will flip to
-#                    trakrf-db-prod-rw.trakrf-prod when the prod-half ticket
-#                    stands up a dedicated Cluster.
-# ingressEnabled   — gates the preview-style ingress + IPAllowList block.
-#                    Currently only preview routes app.preview.gke.trakrf.id;
-#                    prod ingress lands in a separate ticket.
-# mqttIp           — per-env MQTT broker LB IP (Tofu-injected by
-#                    scripts/apply-root-app.sh on GKE; blank on non-GKE).
-#                    Hostname is computed as `mqtt.<env>.gke.trakrf.id`.
+# dbHost                       — backend/ingester DSN host (`<service>.<ns>`).
+#                                Prod resolves to the shared Cluster in
+#                                trakrf-system; will flip when prod-half
+#                                stands up a dedicated Cluster.
+# ingressEnabled               — gates the preview-style ingress + IPAllowList.
+# mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
+# dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
+# dbCluster.namespace          — where the Cluster Application installs.
+# dbCluster.createRetainClass  — true on exactly one release (creates the
+#                                cluster-scoped premium-rwo-retain SC).
+# dbCluster.externalIp         — non-empty enables the external LB Service for
+#                                external psql clients (FDW dev endpoint).
+#                                Tofu-injected on GKE for envs that have one.
 envs:
   preview:
     dbHost: trakrf-db-preview-rw.trakrf-preview
     ingressEnabled: true
     mqttIp: ""
+    dbCluster:
+      fullnameOverride: trakrf-db-preview
+      namespace: trakrf-preview
+      createRetainClass: true
+      externalIp: ""
   prod:
     dbHost: trakrf-db-rw.trakrf-system
     ingressEnabled: false
     mqttIp: ""
+    dbCluster:
+      fullnameOverride: trakrf-db
+      namespace: trakrf-system
+      createRetainClass: false
+      externalIp: ""
 
 # Tofu output placeholders (populated by scripts/apply-root-app.sh at install time)
 certManagerIdentityClientId: ""
@@ -65,10 +79,6 @@ cloudDnsZoneNameId: ""
 cnpgBackupBucket: ""
 cnpgBackupsGcpServiceAccountEmail: ""
 
-# TRA-810 — Preview CNPG primary LB IP (Tofu-injected). GKE-only; consumed
-# by argocd/root/templates/trakrf-db-preview.yaml to enable the external
-# Service. Hostname is fixed `db.preview.gke.trakrf.id`.
-dbPreviewIp: ""
 
 # Preview ingress origin-lock — populated by scripts/apply-root-app.sh.
 # breakglassSourceCidr: resolved at apply time from a dyn DNS hostname
