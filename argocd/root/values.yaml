@@ -19,6 +19,30 @@ namespaces:
   trakrfPreview: trakrf-preview
   trakrfProd: trakrf-prod
 
+# Per-env workload config consumed by trakrf-backend.yaml + trakrf-ingester.yaml.
+# Adding a third env (whitelabel tenant, etc.) means adding a key here and a
+# matching CNPG Cluster Application elsewhere — no template edits needed.
+#
+# dbHost           — DSN host (`<service>.<ns>` form). Prod still resolves to
+#                    the shared Cluster in trakrf-system; will flip to
+#                    trakrf-db-prod-rw.trakrf-prod when the prod-half ticket
+#                    stands up a dedicated Cluster.
+# ingressEnabled   — gates the preview-style ingress + IPAllowList block.
+#                    Currently only preview routes app.preview.gke.trakrf.id;
+#                    prod ingress lands in a separate ticket.
+# mqttIp           — per-env MQTT broker LB IP (Tofu-injected by
+#                    scripts/apply-root-app.sh on GKE; blank on non-GKE).
+#                    Hostname is computed as `mqtt.<env>.gke.trakrf.id`.
+envs:
+  preview:
+    dbHost: trakrf-db-preview-rw.trakrf-preview
+    ingressEnabled: true
+    mqttIp: ""
+  prod:
+    dbHost: trakrf-db-rw.trakrf-system
+    ingressEnabled: false
+    mqttIp: ""
+
 # Tofu output placeholders (populated by scripts/apply-root-app.sh at install time)
 certManagerIdentityClientId: ""
 tenantId: ""
@@ -41,16 +65,9 @@ cloudDnsZoneNameId: ""
 cnpgBackupBucket: ""
 cnpgBackupsGcpServiceAccountEmail: ""
 
-# TRA-828 — per-env MQTT broker LB IPs (Tofu-injected by scripts/apply-root-app.sh).
-# Blank on non-GKE clusters; consumed by argocd/root/templates/trakrf-ingester.yaml
-# to set per-env broker.loadBalancerIP. Hostname is computed per-env from a
-# fixed `mqtt.{env}.gke.trakrf.id` template (no per-env placeholder needed).
-mqttPreviewIp: ""
-mqttProdIp: ""
-
 # TRA-810 — Preview CNPG primary LB IP (Tofu-injected). GKE-only; consumed
-# by argocd/root/templates/trakrf-db.yaml to enable the external Service.
-# Hostname is fixed `db.preview.gke.trakrf.id` (no per-env placeholder).
+# by argocd/root/templates/trakrf-db-preview.yaml to enable the external
+# Service. Hostname is fixed `db.preview.gke.trakrf.id`.
 dbPreviewIp: ""
 
 # Preview ingress origin-lock — populated by scripts/apply-root-app.sh.

@@ -1,24 +1,15 @@
 {{- /*
-  One trakrf-ingester Application per env. Mirrors the trakrf-backend
-  pattern — same per-env DB credentials, per-env DB host (preview lives
-  on its dedicated trakrf-db-preview Cluster in trakrf-preview ns; prod
-  is still on the shared trakrf-db Cluster in trakrf-system until the
-  prod cutover ticket retires it). The ingester has no migrate Job and
-  no ingress.
+  One trakrf-ingester Application per env. Per-env config (DB host, MQTT
+  broker IP) lives in .Values.envs at the root chart values level — the
+  template has zero env-name string conditionals. The ingester has no
+  migrate Job and no ingress.
 
-  TRA-828: each env also gets its own broker hostname + LB IP injected
-  here. On non-GKE clusters mqttPreviewIp/mqttProdIp are blank and the
-  cluster overlay sets broker.enabled=false (values-aks.yaml /
-  values-eks.yaml), so the unused broker.* values are harmless.
+  On non-GKE clusters, envs.<env>.mqttIp is blank and the cluster overlay
+  sets broker.enabled=false (values-aks.yaml / values-eks.yaml), so the
+  unused broker.* values are harmless.
 */ -}}
-{{- range $env := list "preview" "prod" }}
-{{- $dbHost := "trakrf-db-rw.trakrf-system" }}
-{{- if eq $env "preview" }}
-{{- $dbHost = "trakrf-db-preview-rw.trakrf-preview" }}
-{{- end }}
-{{- $ipKey := printf "mqtt%sIp" (title $env) -}}
-{{- $ip := index $.Values $ipKey | default "" -}}
-{{- $values := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmqtt:\n  clientId: trakrf-ingester-%s-%s\nbroker:\n  hostname: mqtt.%s.gke.trakrf.id\n  loadBalancerIP: %s\n" $dbHost $.Values.cluster $env $env $ip }}
+{{- range $env, $cfg := $.Values.envs }}
+{{- $values := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmqtt:\n  clientId: trakrf-ingester-%s-%s\nbroker:\n  hostname: mqtt.%s.gke.trakrf.id\n  loadBalancerIP: %s\n" $cfg.dbHost $.Values.cluster $env $env $cfg.mqttIp }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-ingester-%s" $env)

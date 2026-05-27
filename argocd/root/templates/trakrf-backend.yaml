@@ -1,25 +1,22 @@
 {{- /*
-  One trakrf-backend Application per env (preview, prod). Each release
-  installs into its own namespace and connects to its own Postgres
-  database via its own credentials.
+  One trakrf-backend Application per env. Per-env config (DB host, ingress
+  flag) lives in .Values.envs at the root chart values level — the template
+  has zero env-name string conditionals, so adding a third env (whitelabel
+  tenant, etc.) is a values change only.
 
   Preview gets ingress + IPAllowList middlewares wired up via the
   trakrf-backend.previewIngressValues helper. Prod stays ingress-off
-  pending production cutover (separate ticket).
+  pending its own ingress ticket.
 
   On GKE, automatic image-tag promotion for preview is handled by an
-  ImageUpdater CR (see trakrf-backend-image-updater.yaml). The chart
-  1.2.x controller is CRD-driven, so the Application itself carries no
+  ImageUpdater CR (see trakrf-backend-image-updater.yaml). The chart 1.2.x
+  controller is CRD-driven, so the Application itself carries no
   image-updater annotations — they would be inert.
 */ -}}
-{{- range $env := list "preview" "prod" }}
-{{- $dbHost := "trakrf-db-rw.trakrf-system" }}
-{{- if eq $env "preview" }}
-{{- $dbHost = "trakrf-db-preview-rw.trakrf-preview" }}
-{{- end }}
-{{- $base := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmigrate:\n  database: trakrf\n  user: trakrf-migrate\n  credentialsSecret: trakrf-migrate-credentials\n  host: %s\nconfig:\n  appEnv: %s\n" $dbHost $dbHost $env }}
+{{- range $env, $cfg := $.Values.envs }}
+{{- $base := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmigrate:\n  database: trakrf\n  user: trakrf-migrate\n  credentialsSecret: trakrf-migrate-credentials\n  host: %s\nconfig:\n  appEnv: %s\n" $cfg.dbHost $cfg.dbHost $env }}
 {{- $ingress := "ingress:\n  enabled: false\n" }}
-{{- if eq $env "preview" }}
+{{- if $cfg.ingressEnabled }}
 {{- $ingress = include "trakrf-backend.previewIngressValues" $ }}
 {{- end }}
 {{- $values := printf "%s%s" $base $ingress }}
