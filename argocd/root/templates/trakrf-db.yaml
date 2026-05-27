@@ -5,9 +5,10 @@
   the template has zero env-name string conditionals. Adding or removing
   a CNPG Cluster is a values change only.
 
-  envs.prod.dbCluster.enabled defaults to false: the shared trakrf-db
-  Cluster has been retired; the prod-half cutover will stand up a new
-  dedicated prod Cluster in the trakrf-prod ns and flip the flag back on.
+  Both envs run dedicated Clusters today (trakrf-db-preview in trakrf-preview,
+  trakrf-db-prod in trakrf-prod). The `enabled` flag exists so future
+  environments (whitelabel tenants, etc.) can be staged off until their
+  bootstrap is ready, without changing template shape.
 
   automatedPrune=false: stateful guardrail. Combined with the
   premium-rwo-retain StorageClass on the PVC, an accidental prune or

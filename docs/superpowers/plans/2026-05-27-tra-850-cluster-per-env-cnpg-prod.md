@@ -465,9 +465,35 @@ Only if Step 1 reveals a gap, edit `argocd/projects/trakrf.yaml` to add the dest
 
 ---
 
-## Task 7 — Pre-merge ops: generate obfuscation_key + apply db-secrets
+## Task 7 — Pre-merge ops: clean reflector sources, generate obfuscation_key, apply db-secrets
 
 These steps happen on the operator's workstation against the live GKE cluster BEFORE the PR is opened. They do not touch tracked files.
+
+> **Ordering caveat (added during pre-merge code review):** the trakrf-system reflector-source Secrets must be deleted BEFORE `just db-secrets` runs. Otherwise reflector races with the new native trakrf-prod Secrets and overwrites them with the old passwords on its next scan (30-60s), causing CrashLoopBackOff once CNPG reconciles role passwords. The original Task 12 cleanup step has been hoisted here as Step 0.
+
+- [ ] **Step 0: Delete reflector-source Secrets in trakrf-system FIRST**
+
+```bash
+just gke-creds              # ensure kubectl points at GKE
+kubectl -n trakrf-system delete secret \
+  trakrf-app-credentials \
+  trakrf-migrate-credentials \
+  --ignore-not-found
+```
+
+Verify the reflector-mirrored shadows in trakrf-prod are gone too (reflector deletes mirrored copies when source is removed):
+
+```bash
+sleep 60   # give reflector its scan window
+kubectl -n trakrf-prod get secret trakrf-app-credentials trakrf-migrate-credentials 2>&1
+# expect: "Error from server (NotFound)" for both
+```
+
+If trakrf-prod still has the mirrored copies after 60s, force-delete them — they would otherwise collide with the new native Secrets:
+
+```bash
+kubectl -n trakrf-prod delete secret trakrf-app-credentials trakrf-migrate-credentials --ignore-not-found
+```
 
 - [ ] **Step 1: Generate `app.obfuscation_key` and store in 1Password**
 
@@ -724,33 +750,20 @@ kubectl -n trakrf-prod exec trakrf-db-prod-1 -- \
 
 ---
 
-## Task 12 — Cleanup orphan reflector source Secrets
+## Task 12 — (Removed; merged into Task 7 Step 0)
 
-- [ ] **Step 1: Delete the now-orphan prod Secrets in trakrf-system**
+The orphan reflector cleanup that previously lived here was hoisted to Task 7 Step 0 to fix a race condition discovered in pre-merge review: reflector would overwrite the new native trakrf-prod Secrets with the old passwords on its next scan if the source Secrets in trakrf-system weren't deleted first.
 
-```bash
-kubectl -n trakrf-system delete secret \
-  trakrf-app-credentials \
-  trakrf-migrate-credentials \
-  --ignore-not-found
-```
-
-- [ ] **Step 2: Verify trakrf-prod's Secrets are unaffected**
+- [ ] **Step 1: Re-verify the cleanup stuck** (defensive — Task 7 Step 0 already ran)
 
 ```bash
-kubectl -n trakrf-prod get secret trakrf-app-credentials trakrf-migrate-credentials \
-  -o jsonpath='{.items[*].metadata.name}'
+kubectl -n trakrf-system get secret trakrf-app-credentials trakrf-migrate-credentials 2>&1
+# expect: NotFound for both
+
+kubectl get secret -A | grep -E 'trakrf-(app|migrate)-credentials' \
+  | grep -v -E 'trakrf-(preview|prod) '
+# expect: zero matches outside the env namespaces
 ```
-
-Expected: `trakrf-app-credentials trakrf-migrate-credentials`.
-
-- [ ] **Step 3: Verify reflector didn't auto-create them somewhere unexpected**
-
-```bash
-kubectl get secret -A | grep -E 'trakrf-(app|migrate)-credentials' | grep -v 'trakrf-(preview|prod):'
-```
-
-Expected: zero matches.
 
 ---
 

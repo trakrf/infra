@@ -1,6 +1,8 @@
 # emberstack/reflector — mirrors annotated Secrets across namespaces.
-# Used to copy CNPG-managed role credential Secrets from trakrf-system
-# into trakrf-preview / trakrf-prod so app pods can mount them.
+# Used today for shared trust material: the Cloudflare Origin Cert
+# (trakrf-id-origin-tls) and the Mosquitto broker auth Secret, both
+# sourced from trakrf-system and mirrored into trakrf-preview / trakrf-prod.
+# CNPG role credentials are NOT mirrored — they're native per-env.
 # Cluster-scoped operator, installed in its own namespace.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
