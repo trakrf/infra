@@ -29,6 +29,18 @@ namespaces:
 #                                in its own namespace.
 # ingressEnabled               — gates the preview-style ingress + IPAllowList.
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
+# imageTag                     — trakrf-backend image tag override. Empty falls
+#                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
+#                                On GKE preview that's intercepted by image-updater
+#                                to track `:preview`; prod pins an explicit tag
+#                                (the TRA-853 ServeSPA sha / floating `:prod` tag)
+#                                so no image-updater is needed. Empty until the
+#                                TRA-853 image is published.
+# environmentLabel             — frontend banner label (TRA-853). Backend reads
+#                                ENVIRONMENT_LABEL at serve time and stamps it into
+#                                index.html. Empty / "prod" / "production" → no
+#                                banner. Same main image everywhere; the banner is
+#                                purely this runtime value.
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
 #                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
@@ -43,6 +55,8 @@ envs:
     dbHost: trakrf-db-preview-rw.trakrf-preview
     ingressEnabled: true
     mqttIp: ""
+    imageTag: ""
+    environmentLabel: preview
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-preview
@@ -53,6 +67,11 @@ envs:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
     mqttIp: ""
+    # Pinned to the first main image carrying the TRA-853 ServeSPA runtime-config
+    # injection (merge commit c372f81). Required for environmentLabel to render.
+    # Saturday's cutover may swap this for a floating :prod tag (TRA-375 call).
+    imageTag: sha-c372f81
+    environmentLabel: GKE pre-prod
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod

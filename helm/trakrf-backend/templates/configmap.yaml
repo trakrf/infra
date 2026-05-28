@@ -6,6 +6,7 @@ metadata:
     {{- include "trakrf-backend.labels" . | nindent 4 }}
 data:
   APP_ENV: {{ .Values.config.appEnv | quote }}
+  ENVIRONMENT_LABEL: {{ .Values.config.environmentLabel | quote }}
   BACKEND_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
   SERVICE_NAME: {{ .Values.config.serviceName | quote }}
   BACKEND_CORS_ORIGIN: {{ .Values.config.corsOrigin | quote }}

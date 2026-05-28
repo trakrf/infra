@@ -111,6 +111,10 @@ config:
   serviceName: trakrf-backend
   corsOrigin: ""
   jwtExpirationSeconds: "3600"
+  # Display label for the frontend environment banner. The Go backend reads
+  # ENVIRONMENT_LABEL at serve time and stamps window.__APP_CONFIG__ into
+  # index.html (TRA-853). Empty / unset / "prod" / "production" → no banner.
+  environmentLabel: ""
 
 # Secrets. Values here land in a K8s Secret created by this chart.
 # For real deployments, override via values.secret.yaml (gitignored):
