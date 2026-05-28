@@ -67,10 +67,12 @@ envs:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
     mqttIp: ""
-    # Pinned to the first main image carrying the TRA-853 ServeSPA runtime-config
-    # injection (merge commit c372f81). Required for environmentLabel to render.
-    # Saturday's cutover may swap this for a floating :prod tag (TRA-375 call).
-    imageTag: sha-c372f81
+    # Floating :prod tag (TRA-375), promoted via platform's promote-prod
+    # workflow_dispatch (imagetools re-tag, no rebuild). Currently points at
+    # sha-c372f81 (the TRA-853 ServeSPA image). Cutover = repoint :prod, no
+    # infra PR. environmentLabel stays "GKE pre-prod" through the dry-run
+    # window; it flips to empty (no banner) as part of the Saturday cutover.
+    imageTag: prod
     environmentLabel: GKE pre-prod
     dbCluster:
       enabled: true
