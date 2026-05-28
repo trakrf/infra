@@ -67,9 +67,10 @@ envs:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
     mqttIp: ""
-    # Repoint to the TRA-853 ServeSPA sha (or floating :prod tag) at merge time.
-    # Empty = chart default (sha-67f3dbc), which predates the banner injection.
-    imageTag: ""
+    # Pinned to the first main image carrying the TRA-853 ServeSPA runtime-config
+    # injection (merge commit c372f81). Required for environmentLabel to render.
+    # Saturday's cutover may swap this for a floating :prod tag (TRA-375 call).
+    imageTag: sha-c372f81
     environmentLabel: GKE pre-prod
     dbCluster:
       enabled: true
