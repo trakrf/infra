@@ -42,6 +42,30 @@ Keep `/tmp/migration-source-counts.txt` for the post-pull diff.
 
 ### 2. Schema bootstrap via the trakrf-backend migrate Job
 
+> **CRITICAL — bootstrap with the CUTOVER image, never the old default.**
+> The migrate Job's golang-migrate lineage is baked into the backend image.
+> The post-TRA-720 "clean stack" is versions 000001–000011; the legacy
+> lineage went to v44. If the Cluster is first bootstrapped by an older image
+> (e.g. a stale `image.tag` default in `values-gke.yaml`), `schema_migrations`
+> records v44 and the cutover image's migrate **cannot reconcile it**
+> (`no migration found for version 44`), blocking the ArgoCD sync. Pin
+> `envs.<env>.imageTag` to the cutover image BEFORE the Cluster's first
+> migrate. Correct order: cluster up → migrate (cutover image) → init-grants
+> → FDW pull. (TRA-850 dry-run caught this: prod was bootstrapped on the old
+> default while the target image carried the renumbered lineage.)
+>
+> **Recovering a wrong-lineage Cluster** (only if already bootstrapped on the
+> wrong image — non-destructive to real data, which is re-pullable from source):
+> ```bash
+> kubectl -n trakrf-<env> exec <cluster>-1 -c postgres -- psql -U postgres -d trakrf \
+>   -c "DROP SCHEMA IF EXISTS trakrf CASCADE" \
+>   -c "DROP TABLE IF EXISTS public.schema_migrations"   # lives in public when search_path=public,trakrf
+> ```
+> Then force an ArgoCD sync so migrate re-bootstraps clean, re-run init-grants
+> (step 2a), then re-run the FDW pull. `app.obfuscation_key` is ALTER DATABASE
+> -scoped and SURVIVES the schema drop — `SHOW app.obfuscation_key` to confirm
+> rather than blindly re-applying.
+
 The existing migrate Job runs as the migrate role and applies the
 golang-migrate set to the new DB. It's already part of the trakrf-backend
 chart; trigger it manually:
@@ -61,6 +85,36 @@ kubectl -n trakrf-<env> logs job/migrate-bootstrap
 
 Expected: Job Complete, all migrations applied, `\dn` shows `trakrf` schema
 present in the new DB.
+
+### 2a. Re-grant the app/migrate roles (REQUIRED before the FDW pull)
+
+The migrate set contains **no** `GRANT` / `ALTER DEFAULT PRIVILEGES` — DB role
+grants are external (the `init-grants` Job in the `trakrf-db` chart). `migrate`
+creates objects owned by `trakrf-migrate`; without this step `trakrf-app` has
+no privileges and the backend fails at **runtime**, not at migrate (easy to
+misdiagnose — `/readyz` is shallow and still returns `ok`). The init-grants SQL
+is idempotent and does retroactive `GRANT ON ALL` + `ALTER DEFAULT PRIVILEGES`.
+
+Re-run it by forcing a sync on the `trakrf-db-<env>` Application (it's a Helm
+`post-upgrade` hook):
+
+```bash
+kubectl -n argocd patch application trakrf-db-<env> --type merge \
+  -p '{"operation":{"sync":{"syncStrategy":{"hook":{}}}}}'
+# confirm:
+kubectl -n trakrf-<env> exec <cluster>-1 -c postgres -- psql -U postgres -d trakrf \
+  -At -c "SELECT has_table_privilege('trakrf-app','trakrf.organizations','SELECT')"
+# expect: t
+```
+
+**Gate the FDW pull on real backend health** — bounce the backend and confirm
+it serves (not just that grants ran) before step 3, or the pull can hit
+partial-permission errors mid-flight:
+
+```bash
+kubectl -n trakrf-<env> rollout restart deploy/trakrf-backend
+kubectl -n trakrf-<env> rollout status deploy/trakrf-backend
+```
 
 ### 3. Enable FDW
 
