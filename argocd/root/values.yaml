@@ -32,10 +32,15 @@ namespaces:
 # imageTag                     — trakrf-backend image tag override. Empty falls
 #                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
 #                                On GKE preview that's intercepted by image-updater
-#                                to track `:preview`; prod uses an explicit static
-#                                pin (e.g. `gke-preprod` during the soak window,
-#                                a semver `v*` for the actual cutover) so no
-#                                image-updater is needed.
+#                                to track `:preview`; prod pins an explicit tag
+#                                (the TRA-853 ServeSPA sha / floating `:prod` tag)
+#                                so no image-updater is needed. Empty until the
+#                                TRA-853 image is published.
+# environmentLabel             — frontend banner label (TRA-853). Backend reads
+#                                ENVIRONMENT_LABEL at serve time and stamps it into
+#                                index.html. Empty / "prod" / "production" → no
+#                                banner. Same main image everywhere; the banner is
+#                                purely this runtime value.
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
 #                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
@@ -51,6 +56,7 @@ envs:
     ingressEnabled: true
     mqttIp: ""
     imageTag: ""
+    environmentLabel: preview
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-preview
@@ -61,7 +67,10 @@ envs:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
     mqttIp: ""
-    imageTag: gke-preprod
+    # Repoint to the TRA-853 ServeSPA sha (or floating :prod tag) at merge time.
+    # Empty = chart default (sha-67f3dbc), which predates the banner injection.
+    imageTag: ""
+    environmentLabel: GKE pre-prod
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod
