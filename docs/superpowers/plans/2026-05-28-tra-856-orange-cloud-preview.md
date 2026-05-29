@@ -157,7 +157,7 @@ git commit -m "feat(tra-856): ACM advanced cert for *.preview.trakrf.id"
 - Modify: `terraform/cloudflare/main.tf` (`cloudflare_record.app_preview`, ~lines 56-63)
 - Modify: `argocd/root/templates/_helpers.tpl` (`trakrf-id-direct` route — add `cloudflare-allow`)
 
-> Lockstep: a CF-proxied request whose origin still enforces the operator `/32` would 403 even the operator. Land the helm `cloudflare-allow` swap and the DNS proxy flip together; do the helm apply (ArgoCD) first so the origin already accepts CF CIDRs when the DNS flips.
+> Lockstep ordering (CORRECTED): flip DNS to orange **first**, THEN apply `cloudflare-allow`. Applying `cloudflare-allow` while the record is still grey would lock the origin to CF CIDRs while real traffic still arrives direct (non-CF) → 403 for everyone, including the operator. Flipping orange first leaves a brief safe window (proxied, origin still open) before the lock lands — no outage. Prereq for the flip: ACM cert active AND Bot Fight Mode off / security_level ≤ medium (so the orange host never challenges header-less API clients).
 
 - [ ] **Step 1: Add cloudflare-allow to the public route**
 
@@ -200,14 +200,19 @@ git add terraform/cloudflare/main.tf argocd/root/templates/_helpers.tpl
 git commit -m "feat(tra-856): orange-cloud app.preview.trakrf.id + cloudflare-allow origin lock"
 ```
 
-- [ ] **Step 5: Apply helm first, then DNS**
+- [ ] **Step 5: Flip DNS to orange FIRST, then apply cloudflare-allow**
+
+Prereqs already met: ACM cert active (Task 1.1) AND Bot Fight Mode off / security_level ≤ medium (Task 1.3). Then:
 
 ```bash
-scripts/apply-root-app.sh gke   # origin now accepts CF CIDRs (cloudflare-allow on public route)
+just cloudflare                 # flip DNS proxied=true (origin still open — brief safe window)
+# verify edge is serving before locking the origin:
+curl -s -D - -o /dev/null https://app.preview.trakrf.id/api/openapi.yaml | grep -iE "^HTTP|cf-ray"   # expect 200 + cf-ray
+scripts/apply-root-app.sh gke   # NOW add cloudflare-allow — origin becomes CF-only
 # confirm route middlewares include cloudflare-allow:
 kubectl --context=gke_trakrf-494211_us-central1-a_gke-trakrf-demo-usc1 -n trakrf-preview get ingressroute trakrf-backend-trakrf-id-direct -o json | python3 -c 'import sys,json;[print([m["name"] for m in r.get("middlewares",[])]) for r in json.load(sys.stdin)["spec"]["routes"]]'
-just cloudflare                 # flip DNS proxied=true
 ```
+(Order matters: applying `cloudflare-allow` while the record is still grey would 403 all direct traffic. Flipping orange first leaves only a brief proxied-but-origin-open window — safe.)
 
 - [ ] **Step 6: Verify edge path**
 
