@@ -110,15 +110,25 @@ ingress:
     # Authenticated Origin Pulls (mTLS) with cloudflare-allow as backstop.
     # The breakglass operator /32 lives only on the grey gke-direct route now.
     #
-    # APPLY ORDER (lockstep, per runbook): ACM cert active + Bot Fight Mode off →
-    # flip DNS proxied=true → THEN this cloudflare-allow takes effect. Applying
-    # cloudflare-allow while the record is still grey would 403 all traffic.
+    # CF→origin leg (SSL mode "strict") presents the Cloudflare Origin CA cert
+    # `trakrf-id-origin-tls` (origin-cert.tf: 15yr, SANs *.trakrf.id +
+    # *.preview.trakrf.id, reflected into trakrf-* namespaces) — NOT a Let's
+    # Encrypt cert. cert.issue=false here on purpose: an LE/HTTP-01 cert would
+    # need ACME validation egress that cloudflare-allow blocks (LE validates
+    # from its own servers, not CF CIDRs) → renewal fails → silent strict-handshake
+    # outage in <=90d. The Origin CA cert is CF-edge-trusted, 15yr, no renewal
+    # dance. (The grey gke-direct route stays on its publicly-trusted LE cert
+    # because direct clients hit it without the CF edge.)
+    #
+    # APPLY ORDER (lockstep, per runbook): ACM edge cert active + Bot Fight Mode
+    # off → flip DNS proxied=true → THEN this cloudflare-allow takes effect.
+    # Applying cloudflare-allow while the record is still grey would 403 all
+    # traffic.
     - name: trakrf-id-direct
       host: app.{{ .env }}.trakrf.id
-      secretName: app-{{ .env }}-trakrf-id-tls
+      secretName: trakrf-id-origin-tls
       cert:
-        issue: true
-        issuer: letsencrypt-prod
+        issue: false
       middlewares:
         - name: default-chain
           namespace: traefik
