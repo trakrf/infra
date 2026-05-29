@@ -103,11 +103,12 @@ ingress:
           namespace: traefik
         - name: breakglass-allow
     {{- if .appTrakrfIdRouteEnabled }}
-    # `app.<env>.trakrf.id` runs grey-cloud (CF DNS-only) because CF Universal
-    # SSL (Free tier) can't issue an edge cert for two-label hosts under
-    # trakrf.id. Per-host LE cert via HTTP-01 at origin; same breakglass
-    # IPAllowList as the gke-direct route. The Origin Cert + cloudflare-allow
-    # middleware live on for future use when prod cutover lands ACM/Total TLS.
+    # `app.<env>.trakrf.id` — public customer-facing host. TRA-856 removed the
+    # breakglass operator /32 from this route ahead of the orange-cloud flip;
+    # the cloudflare-allow IPAllowList + ACM edge cert land in Phase 1 so the
+    # origin becomes reachable only via the Cloudflare edge. Until then it is
+    # intentionally open (grey-cloud, pre-launch preview) to unblock the docs
+    # build's live OpenAPI fetch. Per-host LE cert via HTTP-01 at origin.
     - name: trakrf-id-direct
       host: app.{{ .env }}.trakrf.id
       secretName: app-{{ .env }}-trakrf-id-tls
@@ -117,7 +118,6 @@ ingress:
       middlewares:
         - name: default-chain
           namespace: traefik
-        - name: breakglass-allow
     {{- end }}
   middlewares:
     breakglass:
