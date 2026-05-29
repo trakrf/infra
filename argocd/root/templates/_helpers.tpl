@@ -70,6 +70,9 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      {{- range .extraSyncOptions }}
+      - {{ . }}
+      {{- end }}
 {{- end -}}
 
 {{/*
