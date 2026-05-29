@@ -61,7 +61,7 @@ resource "cloudflare_record" "app_preview" {
   content = var.gke_traefik_lb_ip
   type    = "A"
   proxied = true
-  comment = "GKE preview origin via Cloudflare edge (orange; ACM edge cert; cloudflare-allow/AOP origin lock) — TRA-856"
+  comment = "Orange preview origin via CF edge; ACM cert + cloudflare-allow origin lock (TRA-856)"
 }
 
 # Docs subdomain for Cloudflare Pages (Docusaurus)
