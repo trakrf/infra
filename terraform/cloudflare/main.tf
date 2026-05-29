@@ -40,26 +40,28 @@ resource "cloudflare_record" "preview" {
   proxied = true
 }
 
-# app.preview.trakrf.id — direct A record to GKE Traefik LB (grey-cloud /
-# DNS-only). Cut over from Railway (was CNAME to f67wu1p6.up.railway.app).
+# app.preview.trakrf.id — public preview API, orange-clouded (TRA-856).
+# A record → GKE Traefik LB; Cloudflare-proxied so the edge owns TLS + WAF + DDoS.
 #
-# Not CF-proxied because CF Universal SSL (Free tier) only covers single-label
-# wildcards (`*.trakrf.id` matches `app.trakrf.id`, not `app.preview.trakrf.id`)
-# — orange-cloud here would get 552 handshake failures at the edge. Origin TLS
-# uses a per-host cert-manager Certificate issued by Let's Encrypt via HTTP-01.
-# Same Traefik backend service as `app.preview.gke.trakrf.id`; per-IngressRoute
-# breakglass IPAllowList middleware enforces origin lock.
+# The two-label host isn't covered by Free Universal SSL (`*.trakrf.id` matches
+# `app.trakrf.id`, not `app.preview.trakrf.id`), so the edge cert comes from an
+# ACM advanced certificate for `*.preview.trakrf.id` (see acm-preview.tf). The
+# CF→origin leg uses the Cloudflare Origin Cert (origin-cert.tf, SAN
+# `*.preview.trakrf.id`); the origin is locked to Cloudflare via the
+# `cloudflare-allow` IPAllowList on the public Traefik route (later hardened to
+# private-CA Authenticated Origin Pulls). The direct `app.preview.gke.trakrf.id`
+# route stays grey + breakglass-gated for origin/test access.
 #
-# Future: revisit CF Total TLS or Advanced Certificate when adding more hosts
-# under preview.trakrf.id or building per-tenant subdomains — at that point
-# orange-cloud + the Origin Cert path becomes viable again.
+# APPLY ORDER (lockstep): ACM cert active → flip this record to proxied → THEN
+# add cloudflare-allow on the Traefik route. (Adding cloudflare-allow while the
+# record is still grey would 403 all direct traffic.)
 resource "cloudflare_record" "app_preview" {
   zone_id = cloudflare_zone.domain.id
   name    = "app.preview"
   content = var.gke_traefik_lb_ip
   type    = "A"
-  proxied = false
-  comment = "GKE preview origin (DNS-only; LE cert at Traefik)"
+  proxied = true
+  comment = "GKE preview origin via Cloudflare edge (orange; ACM edge cert; cloudflare-allow/AOP origin lock) — TRA-856"
 }
 
 # Docs subdomain for Cloudflare Pages (Docusaurus)

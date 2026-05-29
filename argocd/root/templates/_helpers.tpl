@@ -103,21 +103,36 @@ ingress:
           namespace: traefik
         - name: breakglass-allow
     {{- if .appTrakrfIdRouteEnabled }}
-    # `app.<env>.trakrf.id` — public customer-facing host. TRA-856 removed the
-    # breakglass operator /32 from this route ahead of the orange-cloud flip;
-    # the cloudflare-allow IPAllowList + ACM edge cert land in Phase 1 so the
-    # origin becomes reachable only via the Cloudflare edge. Until then it is
-    # intentionally open (grey-cloud, pre-launch preview) to unblock the docs
-    # build's live OpenAPI fetch. Per-host LE cert via HTTP-01 at origin.
+    # `app.<env>.trakrf.id` — public customer-facing host, orange-clouded
+    # (TRA-856). Cloudflare owns edge TLS (ACM cert) + WAF + DDoS; the origin is
+    # locked to Cloudflare by the cloudflare-allow IPAllowList (CF published
+    # CIDRs), so direct-to-origin is refused. Later hardened to private-CA
+    # Authenticated Origin Pulls (mTLS) with cloudflare-allow as backstop.
+    # The breakglass operator /32 lives only on the grey gke-direct route now.
+    #
+    # CF→origin leg (SSL mode "strict") presents the Cloudflare Origin CA cert
+    # `trakrf-id-origin-tls` (origin-cert.tf: 15yr, SANs *.trakrf.id +
+    # *.preview.trakrf.id, reflected into trakrf-* namespaces) — NOT a Let's
+    # Encrypt cert. cert.issue=false here on purpose: an LE/HTTP-01 cert would
+    # need ACME validation egress that cloudflare-allow blocks (LE validates
+    # from its own servers, not CF CIDRs) → renewal fails → silent strict-handshake
+    # outage in <=90d. The Origin CA cert is CF-edge-trusted, 15yr, no renewal
+    # dance. (The grey gke-direct route stays on its publicly-trusted LE cert
+    # because direct clients hit it without the CF edge.)
+    #
+    # APPLY ORDER (lockstep, per runbook): ACM edge cert active + Bot Fight Mode
+    # off → flip DNS proxied=true → THEN this cloudflare-allow takes effect.
+    # Applying cloudflare-allow while the record is still grey would 403 all
+    # traffic.
     - name: trakrf-id-direct
       host: app.{{ .env }}.trakrf.id
-      secretName: app-{{ .env }}-trakrf-id-tls
+      secretName: trakrf-id-origin-tls
       cert:
-        issue: true
-        issuer: letsencrypt-prod
+        issue: false
       middlewares:
         - name: default-chain
           namespace: traefik
+        - name: cloudflare-allow
     {{- end }}
   middlewares:
     breakglass:
