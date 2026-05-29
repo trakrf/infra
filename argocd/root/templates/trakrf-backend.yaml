@@ -29,6 +29,18 @@
 {{- $ingress = include "trakrf-backend.ingressValues" $ingressCtx }}
 {{- end }}
 {{- $values := printf "%s%s" $base $ingress }}
+{{- /*
+  JWT_SECRET is a real, externally-set value (kubectl-managed in-cluster, not in
+  git — no ESO/sealed-secret ceremony today). The chart's secret.yaml renders the
+  placeholder default "change-me"; without this carve-out ArgoCD selfHeal reverts
+  the real secret → the backend's TRA-860/#428 fail-fast guard refuses to boot.
+  ignoreDifferences (diff) + RespectIgnoreDifferences (sync) make the operator-set
+  JWT_SECRET stick across syncs. Applies per-env, so prod inherits the carve-out
+  at cutover (its real secret must be set the same way — see TRA-375).
+  TODO durable: replace the manual secret source with External Secrets + GCP
+  Secret Manager (TRA-375 follow-up); the carve-out stays correct either way.
+*/ -}}
+{{- $ignore := printf "- group: \"\"\n  kind: Secret\n  name: trakrf-backend\n  namespace: trakrf-%s\n  jsonPointers:\n    - /data/JWT_SECRET\n" $env }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-backend-%s" $env)
@@ -40,5 +52,7 @@
   "targetRevision" $.Values.targetRevision
   "destination" $.Values.destination
   "inlineValues" $values
+  "ignoreDifferences" $ignore
+  "extraSyncOptions" (list "RespectIgnoreDifferences=true")
 ) }}
 {{- end }}
