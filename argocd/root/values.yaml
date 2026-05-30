@@ -104,7 +104,7 @@ envs:
     # mean 15-min tokens with no refresh. Returns to "900" at the cutover roll-
     # forward (after the next soak), once prod is on a ≥#416 image — verified by
     # kubectl digest check before that apply.
-    jwtExpirationSeconds: "3600"
+    jwtExpirationSeconds: "900"
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod
