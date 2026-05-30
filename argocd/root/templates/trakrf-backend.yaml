@@ -15,6 +15,12 @@
 */ -}}
 {{- range $env, $cfg := $.Values.envs }}
 {{- $base := printf "database:\n  name: trakrf\n  user: trakrf-app\n  credentialsSecret: trakrf-app-credentials\n  host: %s\nmigrate:\n  database: trakrf\n  user: trakrf-migrate\n  credentialsSecret: trakrf-migrate-credentials\n  host: %s\nconfig:\n  appEnv: %s\n  environmentLabel: %q\n" $cfg.dbHost $cfg.dbHost $env $cfg.environmentLabel }}
+{{- /* Per-env access-token TTL (TRA-843). Appended to the config block BEFORE
+       the top-level image: key below. Empty falls back to the chart default in
+       helm/trakrf-backend/values.yaml ("3600"). */ -}}
+{{- if $cfg.jwtExpirationSeconds }}
+{{- $base = printf "%s  jwtExpirationSeconds: %q\n" $base $cfg.jwtExpirationSeconds }}
+{{- end }}
 {{- if $cfg.imageTag }}
 {{- $base = printf "%simage:\n  tag: %q\n" $base $cfg.imageTag }}
 {{- end }}
