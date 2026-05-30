@@ -22,9 +22,10 @@
   GKE-only — guarded by .Values.cluster, mirroring the controller
   Application in argocd-image-updater.yaml.
 
-  Safety: only namePattern: trakrf-backend-preview is referenced. The
-  trakrf-backend-prod Application is intentionally NOT matched —
-  prod stays a deliberate manual tag promotion.
+  A separate ImageUpdater CR below (trakrf-backend-prod) tracks prod's
+  resolved `:prod` digest (TRA-351 option b) — promote-prod remains the
+  sole audited publish gate; image-updater just pins the digest it
+  resolves to.
 */ -}}
 {{- if eq .Values.cluster "gke" }}
 apiVersion: argocd-image-updater.argoproj.io/v1alpha1
@@ -40,6 +41,54 @@ spec:
       images:
         - alias: backend
           imageName: ghcr.io/trakrf/backend:preview
+          commonUpdateSettings:
+            updateStrategy: digest
+          manifestTargets:
+            helm:
+              name: image.repository
+              tag: image.tag
+      writeBackConfig:
+        method: argocd
+---
+{{- /*
+  ImageUpdater CR for the trakrf-backend PROD deployment on GKE (TRA-351,
+  option b — fixes the prod deploy gap found in the 2026-05-30 v1.2.0 dry run).
+
+  WHY prod is now image-updater-tracked (it deliberately was NOT before):
+  GKE prod deploys the backend via the floating `:prod` tag with
+  imagePullPolicy=IfNotPresent. Re-pointing `:prod` (platform's promote-prod
+  imagetools re-tag) does NOT make kubelet re-pull — it reuses the locally
+  cached image for the `:prod` ref, so "promote :prod + sync" deploys nothing
+  (the migrate hook even runs on the stale cached image — a silent no-op).
+  Pinning prod to the resolved DIGEST (sha256:...) makes the ref immutable,
+  so kubelet pulls exactly that build — same mechanism preview already uses.
+
+  MODEL: promote-prod stays the SOLE audited "publish :prod" gate. This CR
+  watches `:prod` and writes its resolved digest into the prod Application
+  whenever that digest changes (i.e. after a promote) — so prod rolls only on
+  a deliberate promote, NOT on every upstream push (unlike preview, which
+  tracks the continuously-rebuilt `:preview`). Same digest strategy + argocd
+  write-back; the chart helper renders <repo>@<digest> on the sha256: prefix.
+
+  NOTE (separate cutover prerequisite, NOT handled here): the post-flatten
+  image enforces the #428 JWT_SECRET guard — it refuses to boot in prod on the
+  "change-me" placeholder. A real JWT_SECRET must be present in the
+  trakrf-prod `trakrf-backend` Secret before/with any flatten roll, or prod
+  crashloops. Tracked alongside this under the TRA-351 cutover epic.
+*/ -}}
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: trakrf-backend-prod
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  applicationRefs:
+    - namePattern: trakrf-backend-prod
+      images:
+        - alias: backend
+          imageName: ghcr.io/trakrf/backend:prod
           commonUpdateSettings:
             updateStrategy: digest
           manifestTargets:

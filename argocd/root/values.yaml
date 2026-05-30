@@ -31,11 +31,12 @@ namespaces:
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
 # imageTag                     — trakrf-backend image tag override. Empty falls
 #                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
-#                                On GKE preview that's intercepted by image-updater
-#                                to track `:preview`; prod pins an explicit tag
-#                                (the TRA-853 ServeSPA sha / floating `:prod` tag)
-#                                so no image-updater is needed. Empty until the
-#                                TRA-853 image is published.
+#                                On GKE BOTH envs are image-updater-tracked
+#                                (TRA-351 option b): preview tracks the
+#                                continuously-rebuilt `:preview`, prod tracks the
+#                                promote-gated `:prod` — each ImageUpdater CR pins
+#                                the resolved DIGEST into its Application. Leave
+#                                empty on GKE; the CRs own the live image.
 # environmentLabel             — frontend banner label (TRA-853). Backend reads
 #                                ENVIRONMENT_LABEL at serve time and stamps it into
 #                                index.html. Empty / "prod" / "production" → no
@@ -78,12 +79,16 @@ envs:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
     mqttIp: ""
-    # Floating :prod tag (TRA-375), promoted via platform's promote-prod
-    # workflow_dispatch (imagetools re-tag, no rebuild). Currently points at
-    # sha-c372f81 (the TRA-853 ServeSPA image). Cutover = repoint :prod, no
-    # infra PR. environmentLabel stays "GKE pre-prod" through the dry-run
-    # window; it flips to empty (no banner) as part of the Saturday cutover.
-    imageTag: prod
+    # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
+    # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
+    # the Application (immutable ref → kubelet pulls the exact build, fixing
+    # the :prod-tag + imagePullPolicy=IfNotPresent deploy gap caught in the
+    # 2026-05-30 v1.2.0 dry run). promote-prod (imagetools re-tag, no rebuild)
+    # stays the sole audited publish-:prod gate; cutover = promote :prod →
+    # image-updater rolls the digest, no infra PR. Bootstrap falls back to
+    # values-gke.yaml's sha tag until the first pin. environmentLabel stays
+    # "GKE pre-prod" through the dry-run window; flips to empty at cutover.
+    imageTag: ""
     environmentLabel: GKE pre-prod
     # TRA-843: held at "3600" so preview=900 can apply alone NOW (the GKE apply
     # is cluster-wide — one render materializes both envs). The running :prod
