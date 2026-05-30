@@ -46,10 +46,11 @@ namespaces:
 #                                refresh design can land on preview ahead of prod.
 #                                Empty falls back to the chart default
 #                                (helm/trakrf-backend/values.yaml: "3600").
-#                                preview="900" (refresh live + soaked); prod held
-#                                at "3600" until the refresh-capable image (PR #416)
-#                                is on the :prod tag in prod — flipping early forces
-#                                15-min re-logins on real users.
+#                                preview="900" (refresh live + soaked). prod also
+#                                "900" (Mike's call, 2026-05-30 cutover) — assumes
+#                                PR #416's refresh endpoint is on the :prod image;
+#                                if not, prod users hit 15-min re-logins. Takes
+#                                effect only on the next apply-root-app.sh.
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
 #                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
@@ -84,9 +85,11 @@ envs:
     # window; it flips to empty (no banner) as part of the Saturday cutover.
     imageTag: prod
     environmentLabel: GKE pre-prod
-    # Held at chart default until PR #416 (refresh endpoint) is on the :prod
-    # image in prod. Flip to "900" then — one-line edit + apply-root-app.sh.
-    jwtExpirationSeconds: "3600"
+    # TRA-843: prod short-TTL realized here too (Mike's call, 2026-05-30 cutover
+    # window). Assumes the refresh endpoint (PR #416) is on the :prod image —
+    # otherwise prod users hit 15-min re-logins with no refresh. Takes effect on
+    # the next scripts/apply-root-app.sh against the live cluster.
+    jwtExpirationSeconds: "900"
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod
