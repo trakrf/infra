@@ -22,14 +22,16 @@ resource "cloudflare_record" "www" {
   proxied = true
 }
 
-# App subdomain for Railway production deployment
+# app.trakrf.id — prod app origin on GKE, orange-clouded (TRA-375 cutover).
+# A → Traefik LB, CF-proxied: edge TLS (ACM cert for app.trakrf.id) + WAF + DDoS;
+# origin locked to Cloudflare via the cloudflare-allow IPAllowList on the
+# trakrf-id-direct IngressRoute. Was a grey CNAME → Railway pre-cutover.
 resource "cloudflare_record" "app" {
   zone_id = cloudflare_zone.domain.id
   name    = "app"
-  content = var.railway_app_prod_endpoint
-  type    = "CNAME"
-  ttl     = 60    # lowered pre-cutover (TRA-375) so the Phase-3 orange flip propagates fast
-  proxied = false # DNS-only mode for Railway deployments
+  content = var.gke_traefik_lb_ip
+  type    = "A"
+  proxied = true
 }
 
 # Preview subdomain for Cloudflare Pages preview deployments
