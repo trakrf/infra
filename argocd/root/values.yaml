@@ -52,6 +52,12 @@ namespaces:
 #                                PR #416's refresh endpoint is on the :prod image;
 #                                if not, prod users hit 15-min re-logins. Takes
 #                                effect only on the next apply-root-app.sh.
+# appTrakrfIdHost              — public customer host for the CF-orange route
+#                                (cloudflare-allow origin lock + CF Origin CA cert,
+#                                cert.issue=false). Explicit per-env, NOT derived
+#                                from the env slug: preview=app.preview.trakrf.id
+#                                (two-label), prod=app.trakrf.id (apex product host).
+#                                Empty/unset skips the route. TRA-856 / TRA-375.
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
 #                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
@@ -65,6 +71,7 @@ envs:
   preview:
     dbHost: trakrf-db-preview-rw.trakrf-preview
     ingressEnabled: true
+    appTrakrfIdHost: app.preview.trakrf.id
     mqttIp: ""
     imageTag: ""
     environmentLabel: preview
@@ -78,6 +85,7 @@ envs:
   prod:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true
+    appTrakrfIdHost: app.trakrf.id
     mqttIp: ""
     # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
     # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
@@ -89,7 +97,7 @@ envs:
     # values-gke.yaml's sha tag until the first pin. environmentLabel stays
     # "GKE pre-prod" through the dry-run window; flips to empty at cutover.
     imageTag: ""
-    environmentLabel: GKE pre-prod
+    environmentLabel: ""
     # TRA-843: held at "3600" so preview=900 can apply alone NOW (the GKE apply
     # is cluster-wide — one render materializes both envs). The running :prod
     # image is still pre-#416 (v1.1.1, /auth/refresh → 404), so prod=900 would

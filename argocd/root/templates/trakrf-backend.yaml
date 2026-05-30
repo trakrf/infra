@@ -28,7 +28,7 @@
 {{- if $cfg.ingressEnabled }}
 {{- $ingressCtx := dict
       "env" $env
-      "appTrakrfIdRouteEnabled" (eq $env "preview")
+      "appTrakrfIdHost" $cfg.appTrakrfIdHost
       "breakglassSourceCidr" $.Values.breakglassSourceCidr
       "cloudflareIpv4Cidrs" $.Values.cloudflareIpv4Cidrs
       "cloudflareIpv6Cidrs" $.Values.cloudflareIpv6Cidrs }}
