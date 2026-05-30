@@ -85,11 +85,13 @@ envs:
     # window; it flips to empty (no banner) as part of the Saturday cutover.
     imageTag: prod
     environmentLabel: GKE pre-prod
-    # TRA-843: prod short-TTL realized here too (Mike's call, 2026-05-30 cutover
-    # window). Assumes the refresh endpoint (PR #416) is on the :prod image —
-    # otherwise prod users hit 15-min re-logins with no refresh. Takes effect on
-    # the next scripts/apply-root-app.sh against the live cluster.
-    jwtExpirationSeconds: "900"
+    # TRA-843: held at "3600" so preview=900 can apply alone NOW (the GKE apply
+    # is cluster-wide — one render materializes both envs). The running :prod
+    # image is still pre-#416 (v1.1.1, /auth/refresh → 404), so prod=900 would
+    # mean 15-min tokens with no refresh. Returns to "900" at the cutover roll-
+    # forward (after the next soak), once prod is on a ≥#416 image — verified by
+    # kubectl digest check before that apply.
+    jwtExpirationSeconds: "3600"
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod
