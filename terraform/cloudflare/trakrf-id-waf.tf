@@ -67,8 +67,8 @@ resource "cloudflare_ruleset" "trakrf_id_api_challenge_skip" {
 
   rules {
     action      = "skip"
-    description = "app.preview.trakrf.id: /api/* and root /openapi.* are non-interactive"
-    expression  = "(http.host eq \"app.preview.trakrf.id\" and (starts_with(http.request.uri.path, \"/api/\") or http.request.uri.path in {\"/openapi.json\" \"/openapi.yaml\"}))"
+    description = "app.preview/app.trakrf.id: /api/* and root /openapi.* are non-interactive"
+    expression  = "(http.host in {\"app.preview.trakrf.id\" \"app.trakrf.id\"} and (starts_with(http.request.uri.path, \"/api/\") or http.request.uri.path in {\"/openapi.json\" \"/openapi.yaml\"}))"
     enabled     = true
     action_parameters {
       products = ["securityLevel"]

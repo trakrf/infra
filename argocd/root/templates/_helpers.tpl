@@ -79,14 +79,17 @@ spec:
   trakrf-backend.ingressValues — YAML block injected into a trakrf-backend
   Application's inline helm.values. Renders the GKE-direct route
   `app.<env>.gke.trakrf.id` (always when ingress is on) and optionally the
-  CF grey-cloud route `app.<env>.trakrf.id` (gated on .appTrakrfIdRouteEnabled).
-  Both Cloudflare/breakglass IPAllowList middlewares are always emitted —
-  they're cheap and future-proof for the Saturday `app.trakrf.id` route.
+  public CF-orange route at .appTrakrfIdHost (emitted when non-empty).
+  The public host is an explicit per-env value, NOT derived from the env slug:
+  preview is the two-label `app.preview.trakrf.id`, prod is the apex
+  `app.trakrf.id`. Both breakglass + cloudflare IPAllowList middlewares are
+  always emitted (gke-direct uses breakglass; the public route uses cloudflare).
 
   Caller MUST pass a dict with:
     env                       — env slug ("preview", "prod")
-    appTrakrfIdRouteEnabled   — bool; true on preview today, false on prod
-                                (prod's CF grey-cloud route lands Saturday)
+    appTrakrfIdHost           — public customer host for the orange route
+                                (preview: app.preview.trakrf.id; prod: app.trakrf.id);
+                                empty/unset skips the route
     breakglassSourceCidr      — root values pass-through
     cloudflareIpv4Cidrs       — root values pass-through (list)
     cloudflareIpv6Cidrs       — root values pass-through (list)
@@ -105,7 +108,7 @@ ingress:
         - name: default-chain
           namespace: traefik
         - name: breakglass-allow
-    {{- if .appTrakrfIdRouteEnabled }}
+    {{- if .appTrakrfIdHost }}
     # `app.<env>.trakrf.id` — public customer-facing host, orange-clouded
     # (TRA-856). Cloudflare owns edge TLS (ACM cert) + WAF + DDoS; the origin is
     # locked to Cloudflare by the cloudflare-allow IPAllowList (CF published
@@ -128,7 +131,7 @@ ingress:
     # Applying cloudflare-allow while the record is still grey would 403 all
     # traffic.
     - name: trakrf-id-direct
-      host: app.{{ .env }}.trakrf.id
+      host: {{ .appTrakrfIdHost }}
       secretName: trakrf-id-origin-tls
       cert:
         issue: false
