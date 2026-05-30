@@ -41,6 +41,15 @@ namespaces:
 #                                index.html. Empty / "prod" / "production" → no
 #                                banner. Same main image everywhere; the banner is
 #                                purely this runtime value.
+# jwtExpirationSeconds         — access-token TTL (seconds) → backend JWT_EXPIRATION
+#                                (TRA-843). Per-env so the short-TTL half of the
+#                                refresh design can land on preview ahead of prod.
+#                                Empty falls back to the chart default
+#                                (helm/trakrf-backend/values.yaml: "3600").
+#                                preview="900" (refresh live + soaked); prod held
+#                                at "3600" until the refresh-capable image (PR #416)
+#                                is on the :prod tag in prod — flipping early forces
+#                                15-min re-logins on real users.
 # dbCluster.enabled            — false skips emitting the CNPG Cluster
 #                                Application entirely.
 # dbCluster.fullnameOverride   — drives CNPG Cluster name + Argo App name.
@@ -57,6 +66,7 @@ envs:
     mqttIp: ""
     imageTag: ""
     environmentLabel: preview
+    jwtExpirationSeconds: "900"
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-preview
@@ -74,6 +84,9 @@ envs:
     # window; it flips to empty (no banner) as part of the Saturday cutover.
     imageTag: prod
     environmentLabel: GKE pre-prod
+    # Held at chart default until PR #416 (refresh endpoint) is on the :prod
+    # image in prod. Flip to "900" then — one-line edit + apply-root-app.sh.
+    jwtExpirationSeconds: "3600"
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-prod
