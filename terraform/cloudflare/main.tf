@@ -28,7 +28,7 @@ resource "cloudflare_record" "app" {
   name    = "app"
   content = var.railway_app_prod_endpoint
   type    = "CNAME"
-  ttl     = 60 # lowered pre-cutover (TRA-375) so the Phase-3 orange flip propagates fast
+  ttl     = 60    # lowered pre-cutover (TRA-375) so the Phase-3 orange flip propagates fast
   proxied = false # DNS-only mode for Railway deployments
 }
 
