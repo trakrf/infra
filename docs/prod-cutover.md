@@ -78,10 +78,9 @@ Session continuity is NOT required, so `JWT_SECRET` needs no rotation — both s
 ### 0.3 Cloudflare edge readiness (for the orange flip) — ⚠️ verify before Phase 3
 **Finding (2026-05-30):** CF serves **per-hostname** edge certs in this zone (e.g. `docs.trakrf.id` → GTS cert, SAN `docs.trakrf.id` only — NOT a `*.trakrf.id` wildcard). `app.trakrf.id` is still grey and presents **Railway's** LE cert, so CF likely has **no edge cert for `app.trakrf.id` yet**. Zone is `ssl=strict`, so flipping `proxied=true` with no active edge cert → TLS errors for real users.
 
-- [ ] **Confirm an active CF edge cert for `app.trakrf.id` BEFORE the flip** (CF dashboard → SSL/TLS → Edge Certificates, or API `certificate_packs`). If absent, choose one:
-  - **(a)** Order an **Advanced Certificate (ACM)** pack for `app.trakrf.id` (same tooling as `acm-preview.tf`) — provisions independent of proxy status; deterministic, no flip-time race. **Recommended** for a customer-facing one-way flip.
-  - **(b)** Rely on Universal SSL auto-provisioning once proxied — faster to set up but introduces a provisioning-latency window at the exact moment of the flip; only acceptable if confirmed it provisions in seconds.
+- [x] **Chose (a) ACM pre-provision** (matches preview). `cloudflare_certificate_pack.prod_app_advanced` for `app.trakrf.id` — **created + ACTIVE 2026-05-30** (id `54b8ada0-3789-40c6-8040-166c1853c125`, `wait_for_active_status` passed in 2m43s). Applied from branch `feat/tra-375-prod-cutover` → **PR must merge to reconcile `main` with live state** (else a `main`-side `just cloudflare` would destroy the pack).
 - [ ] Confirm **Bot Fight Mode** posture won't challenge `/api/v1/*` (CF dashboard) — mirror the preview WAF skip (Phase 2.3).
+- [ ] (At flip time) re-confirm the edge cert serves on `app.trakrf.id` once proxied.
 
 ### 0.4 Source snapshot
 - [ ] Snapshot current TSC prod row counts for the post-migration diff:
