@@ -11,9 +11,10 @@
   there.
 
   Safety: the controller only touches Applications named by an
-  ImageUpdater CR. The trakrf-backend-prod Application has no CR pointing
-  at it — prod stays a deliberate manual tag promotion once it shares
-  the GKE cluster.
+  ImageUpdater CR. Both trakrf-backend-preview and trakrf-backend-prod
+  have CRs (see trakrf-backend-image-updater.yaml): preview tracks the
+  continuously-rebuilt `:preview`; prod tracks the promote-gated `:prod`
+  digest (TRA-351 option b) — promote-prod stays the sole publish gate.
 */ -}}
 {{- if eq .Values.cluster "gke" }}
 apiVersion: argoproj.io/v1alpha1
