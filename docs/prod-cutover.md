@@ -4,12 +4,34 @@
 
 - **Date:** 2026-05-30
 - **Owners:** `infra` (Mike) — everything below except the image; `platform` — image rebuild + `:prod` promote
-- **Status:** ready to execute; one-way door at Phase 3
+- **Status:** ✅ **EXECUTED + VERIFIED 2026-05-30** — `app.trakrf.id` live on GKE (orange), backend v1.2.0, all checks passed. The **As-run outcome** below is authoritative; the phased plan that follows is the as-written pre-execution record (kept for the trail + as a template for the next cutover).
 - **Reference designs:** `docs/superpowers/specs/2026-05-27-tra-850-cluster-per-env-cnpg-prod-design.md`, `docs/db-migration.md` (FDW mechanics), Linear TRA-375 / TRA-850 / TRA-888 / TRA-889
 
 > This is the **real** customer-facing cutover. The dry-run (TRA-850) has been live and healthy on `app.prod.gke.trakrf.id` for 3 days. This runbook does the delta: durable deploy mechanism, real secret, fresh data, the public `app.trakrf.id` orange route, and the DNS flip.
 
 ---
+
+## ✅ As-run outcome (executed + verified 2026-05-30)
+
+Cutover **executed and verified end-to-end** — `app.trakrf.id` is live on GKE (orange-cloud), backend **v1.2.0**, data on dedicated `trakrf-db-prod` CNPG. Validated three ways: a real user write round-trip on the TrakRF org (edit → inventory → save → confirmed in history); platform's independent public-edge + global-uniqueness (TRA-886) checks; and infra's data/edge/origin-lock checks. UptimeRobot went green.
+
+**What actually happened, with deviations from the plan below:**
+
+- **Phase 0 — image:** platform **rebuilt** `main@8ca0955` → true v1.2.0 (digest `sha256:4fb6d0bb…`). A re-tag alone was insufficient — `git describe` bakes the version at build time, so the existing image self-reports `v1.1.1-165`. `:prod` was promoted to the v1.2.0 digest *before* the apply.
+- **Phase 0 — secrets:** the dry-run `app.obfuscation_key` and `JWT_SECRET` were **kept** (verified valid; key distinct from preview's `6f6266…` test key) and archived to 1Password — no rotation (session continuity not required).
+- **Phase 0 — edge cert (deviation):** the plan assumed grey / Universal SSL; instead we **pre-provisioned an ACM advanced cert** for `app.trakrf.id` (`acm-prod.tf`, active in 2m43s, PR #138) so the strict-SSL orange flip had no provisioning race.
+- **Phase 2 ran BEFORE Phase 1 (deviation — to shrink the customer window):** `apply-root-app.sh gke` materialized the durable `trakrf-backend-prod` ImageUpdater CR → pinned `:prod`=`4fb6d0bb` in one shot → backend rolled to **v1.2.0**; pre-prod banner dropped; **JWT TTL→900** (v1.2.0 carries `/auth/refresh`). The public route host is an explicit per-env value **`appTrakrfIdHost`** (`app.trakrf.id`), NOT the derived `app.<env>.trakrf.id` — a render-check caught that deriving it yielded `app.prod.trakrf.id`. WAF challenge-skip extended to `app.trakrf.id`. DNS TTL pre-lowered 300→60. (PRs #139, #140.)
+- **Phase 1 — data (deviation):** full from-scratch re-migration via the TRA-810 **natural-key FDW pull** (`backend/database/cutover/` files 00→20 @ platform `8ca0955`), run in-pod as `postgres`. **`asset_scans` WAS migrated** (16 rows — customers' current asset locations); only `tag_scans` left empty. Surrogate IDs re-minted (`RESTART IDENTITY`) → CNPG Feistel IDs ≠ TSC IDs. All verify gates passed; per-customer exact (NADA 17 assets/1 loc, Frederick Health 3 assets/1 loc). FDW torn down; `obfuscation_key` survived; backend bounced.
+- **Phase 3 — DNS flip ⛔ (the one-way door):** `cloudflare_record.app` CNAME→A → `34.56.243.51` (`var.gke_traefik_lb_ip`), `proxied=true`. Verified: CF edge serves v1.2.0, propagated globally (1.1.1.1 + 8.8.8.8 → CF IPs), `/api` reachable, origin-lock direct-to-LB → **403**. (PR #141.)
+- **Phase 4 — wind-down:** Railway prod deployment removed (config retained); **both TSC services paused** (not deleted); `pg_dump -Fc` of preview + prod pushed to GCS `tsc-final-archive/2026-05-30/` (non-expiring prefix — clear of the 14d lifecycle). Both envs confirmed reading from CNPG with TSC out of the loop. Linear TRA-351/375/850/888/889 closed; **TRA-893** tracks the post-soak teardown (delete TSC, remove Railway, drop `railway_*` vars). Memory updated.
+
+**Net deviations from the as-written plan:** (1) ACM pre-provision, not grey/Universal SSL; (2) orange-cloud, not grey "mirror Railway"; (3) `asset_scans` migrated, not empty; (4) v1.2.0 required a fresh rebuild; (5) Phase 2 ran before Phase 1 to minimize downtime; (6) `appTrakrfIdHost` explicit-host fix; (7) `JWT_SECRET` kept, not Railway's.
+
+---
+
+## Plan (as written, pre-execution)
+
+_The sections below are the runbook as authored before execution; where they differ, the As-run outcome above is authoritative._
 
 ## Decisions (locked with Mike, 2026-05-30)
 
