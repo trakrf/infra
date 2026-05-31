@@ -34,6 +34,22 @@ resource "cloudflare_record" "app" {
   proxied = true
 }
 
+# grafana.trakrf.id — internal ops Grafana on GKE, orange-clouded (TRA-894).
+# Replaces the retired grafana.gke.trakrf.id (.gke. was a pre-ACM workaround).
+# A → Traefik LB, CF-proxied: edge TLS via Universal SSL (single-label
+# *.trakrf.id is covered — no ACM advanced cert needed) + WAF + DDoS. CF→origin
+# leg (SSL strict) presents the CF Origin CA cert trakrf-id-origin-tls
+# (SAN *.trakrf.id) at Traefik — same pattern as app.trakrf.id. No origin
+# IP-lock yet (Grafana is internal/single-user); deferred hardening.
+resource "cloudflare_record" "grafana" {
+  zone_id = cloudflare_zone.domain.id
+  name    = "grafana"
+  content = var.gke_traefik_lb_ip
+  type    = "A"
+  proxied = true
+  comment = "TRA-894 — Grafana orange origin via CF edge (Universal SSL + CF Origin CA cert)"
+}
+
 # Preview subdomain for Cloudflare Pages preview deployments
 resource "cloudflare_record" "preview" {
   zone_id = cloudflare_zone.domain.id

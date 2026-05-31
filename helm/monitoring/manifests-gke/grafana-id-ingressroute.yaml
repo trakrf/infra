@@ -1,8 +1,12 @@
-# Public ingress for Grafana on the consolidated trakrf.id zone (TRA-830).
-# Dual-served alongside the legacy grafana.gke.trakrf.app route until DNS
-# soak completes, then the .app variant is retired. Uses an explicit
-# tls.secretName so the .id host gets its own LE cert instead of falling
-# back to Traefik's default TLSStore (which is bound to the .app wildcard).
+# Public ingress for Grafana at grafana.trakrf.id on GKE (TRA-894).
+# Orange-clouded: Cloudflare owns edge TLS (Universal SSL, single-label
+# *.trakrf.id) + WAF + DDoS. The CF→origin leg (SSL "strict") presents the
+# CF Origin CA cert trakrf-id-origin-tls (origin-cert.tf: 15yr, SAN *.trakrf.id),
+# reflected into the monitoring namespace by emberstack/reflector — same pattern
+# as the app.trakrf.id route. NOT a Let's Encrypt cert (the retired
+# grafana.gke.trakrf.id used LE via the Cloud DNS solver). Resource name kept as
+# `grafana-id` to avoid a delete+recreate blip (monitoring is kubectl-applied,
+# not Argo-synced).
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -15,7 +19,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`grafana.gke.trakrf.id`)
+    - match: Host(`grafana.trakrf.id`)
       kind: Rule
       middlewares:
         - name: default-chain
@@ -24,4 +28,4 @@ spec:
         - name: kube-prometheus-stack-grafana
           port: 80
   tls:
-    secretName: grafana-gke-trakrf-id-tls
+    secretName: trakrf-id-origin-tls

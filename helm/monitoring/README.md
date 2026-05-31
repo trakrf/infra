@@ -21,7 +21,9 @@ ConfigMap).
 
 ## Access
 
-Grafana is exposed publicly at <https://grafana.eks.trakrf.app> (TRA-386).
+Grafana is exposed publicly at <https://grafana.trakrf.id> on GKE prod
+(TRA-894; orange-clouded via Cloudflare). The retired EKS host was
+grafana.eks.trakrf.app.
 Prometheus and Alertmanager remain cluster-internal; use port-forward.
 
 ```sh
