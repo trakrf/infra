@@ -53,12 +53,12 @@ origin-cert-secret:
         --dry-run=client -o yaml \
       | kubectl annotate --local -f - --overwrite \
           reflector.v1.k8s.emberstack.com/reflection-allowed=true \
-          'reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces=trakrf-preview,trakrf-prod' \
+          'reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces=trakrf-preview,trakrf-prod,monitoring' \
           reflector.v1.k8s.emberstack.com/reflection-auto-enabled=true \
-          'reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-preview,trakrf-prod' \
+          'reflector.v1.k8s.emberstack.com/reflection-auto-namespaces=trakrf-preview,trakrf-prod,monitoring' \
           -o yaml \
       | kubectl apply -f -
-    echo "trakrf-id-origin-tls applied in trakrf-system; reflector will mirror to trakrf-preview/trakrf-prod."
+    echo "trakrf-id-origin-tls applied in trakrf-system; reflector will mirror to trakrf-preview/trakrf-prod/monitoring."
 
 # Plan and apply AWS infrastructure (Route53, EKS)
 aws: (_backend-conf "terraform/aws")

@@ -5,6 +5,18 @@
 
 prometheus:
   prometheusSpec:
+    # TRA-894: prod + preview share this GKE cluster and one kube-prometheus-stack.
+    # trakrf-backend/trakrf-ingester emit a ServiceMonitor into every env namespace,
+    # so default cluster-wide discovery would scrape the intentionally-unmonitored
+    # trakrf-preview targets. Restrict target discovery to every namespace EXCEPT
+    # trakrf-preview (exclude-list is robust against future infra namespaces).
+    # kubernetes.io/metadata.name is auto-set by k8s on every namespace (GA).
+    serviceMonitorNamespaceSelector: &notPreview
+      matchExpressions:
+        - { key: kubernetes.io/metadata.name, operator: NotIn, values: [trakrf-preview] }
+    podMonitorNamespaceSelector: *notPreview
+    probeNamespaceSelector: *notPreview
+    scrapeConfigNamespaceSelector: *notPreview
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -32,8 +44,8 @@ grafana:
     storageClassName: premium-rwo
   grafana.ini:
     server:
-      domain: grafana.gke.trakrf.id
-      root_url: https://grafana.gke.trakrf.id
+      domain: grafana.trakrf.id
+      root_url: https://grafana.trakrf.id
   tolerations:
     - key: kubernetes.io/arch
       operator: Equal
