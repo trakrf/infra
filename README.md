@@ -15,7 +15,7 @@ graph LR
   RDR[Fixed RFID Readers] -->|MQTT / TLS| MQTT[Mosquitto Broker]
   MQTT --> API[Go Backend API<br/>+ in-process MQTT subscriber]
   API --> DB[(CNPG<br/>TimescaleDB)]
-  API --> WEB[trakrf.app<br/>Cloudflare Pages]
+  API --> WEB[app.trakrf.id<br/>Cloudflare Pages]
 
   subgraph Observability
     PROM[Prometheus]
@@ -48,7 +48,7 @@ graph LR
   end
 ```
 
-Fixed RFID readers publish MQTT over TLS to a self-hosted **Mosquitto** broker. The Go **backend** runs an in-process MQTT subscriber that ingests messages straight into **CloudNativePG** (CNPG) running **TimescaleDB**, and the same backend serves that data to `trakrf.app`. **Traefik v3** fronts the cluster with **cert-manager** issuing wildcard certs via DNS-01 (Azure DNS on AKS, Cloud DNS on GKE — both authenticated by workload identity, no static credentials); cert-manager also issues the broker's `:8883` TLS listener cert. **kube-prometheus-stack** scrapes everything; **ArgoCD** reconciles workloads from this repo using an app-of-apps **root chart** that re-parents per cluster; **OpenTofu** provisions the underlying cloud.
+Fixed RFID readers publish MQTT over TLS to a self-hosted **Mosquitto** broker. The Go **backend** runs an in-process MQTT subscriber that ingests messages straight into **CloudNativePG** (CNPG) running **TimescaleDB**, and the same backend serves that data to `app.trakrf.id`. **Traefik v3** fronts the cluster with **cert-manager** issuing wildcard certs via DNS-01 (Azure DNS on AKS, Cloud DNS on GKE — both authenticated by workload identity, no static credentials); cert-manager also issues the broker's `:8883` TLS listener cert. **kube-prometheus-stack** scrapes everything; **ArgoCD** reconciles workloads from this repo using an app-of-apps **root chart** that re-parents per cluster; **OpenTofu** provisions the underlying cloud.
 
 ## Why this architecture
 
