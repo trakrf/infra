@@ -3,12 +3,12 @@
 Application Helm charts for TrakRF services, deployed to the `trakrf` namespace
 alongside the CNPG PostgreSQL cluster.
 
-- `trakrf-backend/` — Go backend API (port 8080, `/healthz` + `/readyz`)
-- `trakrf-ingester/` — Redpanda Connect MQTT → PostgreSQL ingester
+- `trakrf-backend/` — Go backend API (port 8080, `/healthz` + `/readyz`); also runs the in-backend MQTT ingestion subscriber (TRA-900)
+- `trakrf-mosquitto/` — self-hosted Mosquitto MQTT broker (TLS :8883) for fixed-reader ingestion (TRA-828/TRA-907)
 
 ## Database connection
 
-Both charts consume the CNPG managed role secret `trakrf-app-credentials`
+The `trakrf-backend` chart consumes the CNPG managed role secret `trakrf-app-credentials`
 (created by `argocd/clusters/trakrf/cluster.yaml`) and assemble `PG_URL` at
 pod-start via Kubernetes `$(VAR)` env interpolation. Role `trakrf-app` has
 DML-only grants; DDL is handled separately by the `trakrf-migrate` role.
@@ -32,7 +32,7 @@ Infisical / HashiCorp Vault integration is planned for a later milestone.
 
 ```sh
 helm lint helm/trakrf-backend
-helm lint helm/trakrf-ingester
+helm lint helm/trakrf-mosquitto
 helm template helm/trakrf-backend   # render to stdout for review
 ```
 

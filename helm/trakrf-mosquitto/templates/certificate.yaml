@@ -1,17 +1,16 @@
-{{- if .Values.broker.enabled }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "trakrf-ingester.fullname" . }}-mqtt
+  name: {{ include "trakrf-mosquitto.fullname" . }}-mqtt
   labels:
-    {{- include "trakrf-ingester.labels" . | nindent 4 }}
+    {{- include "trakrf-mosquitto.labels" . | nindent 4 }}
 spec:
-  secretName: {{ .Values.broker.certSecret }}
+  secretName: {{ .Values.certSecret }}
   # Host-specific cert, not wildcard. The GL-S10's minimal mbedTLS build has
   # inconsistent wildcard-SAN matching; host-specific avoids the issue.
-  commonName: {{ .Values.broker.hostname }}
+  commonName: {{ .Values.hostname }}
   dnsNames:
-    - {{ .Values.broker.hostname }}
+    - {{ .Values.hostname }}
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
@@ -19,4 +18,3 @@ spec:
     algorithm: ECDSA
     size: 256
     rotationPolicy: Always
-{{- end }}

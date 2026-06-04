@@ -6,7 +6,7 @@
 prometheus:
   prometheusSpec:
     # TRA-894: prod + preview share this GKE cluster and one kube-prometheus-stack.
-    # trakrf-backend/trakrf-ingester emit a ServiceMonitor into every env namespace,
+    # trakrf-backend/trakrf-mosquitto emit a ServiceMonitor into every env namespace,
     # so default cluster-wide discovery would scrape the intentionally-unmonitored
     # trakrf-preview targets. Restrict target discovery to every namespace EXCEPT
     # trakrf-preview (exclude-list is robust against future infra namespaces).

@@ -19,7 +19,7 @@ namespaces:
   trakrfPreview: trakrf-preview
   trakrfProd: trakrf-prod
 
-# Per-env workload config consumed by trakrf-backend.yaml, trakrf-ingester.yaml,
+# Per-env workload config consumed by trakrf-backend.yaml, trakrf-mosquitto.yaml,
 # AND trakrf-db.yaml (which ranges over this and emits one CNPG Cluster
 # Application per env). Adding a third env (whitelabel tenant, etc.) is a
 # values addition only — no template edits.

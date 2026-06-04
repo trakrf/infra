@@ -20,7 +20,7 @@
 - New CNPG Cluster `trakrf-db-<env>` Ready in namespace `trakrf-<env>`.
 - Platform FDW pull script available (trakrf/platform PR #413,
   `cutover/<env>-fdw-pull.sql` or equivalent on a current branch).
-- Application Applications (`trakrf-backend-<env>`, `trakrf-ingester-<env>`)
+- Application Applications (`trakrf-backend-<env>`)
   are scaled down or already CrashLoopBackOff (post-DSN-flip, pre-data).
 
 ## Steps
@@ -185,7 +185,6 @@ from CrashLoopBackOff:
 
 ```bash
 kubectl -n trakrf-<env> rollout restart deploy/trakrf-backend
-kubectl -n trakrf-<env> rollout restart deploy/trakrf-ingester
 kubectl -n trakrf-<env> get pods -w
 ```
 
@@ -222,5 +221,4 @@ If sanity check (step 4) fails:
 The apps stay pointed at the new Cluster (the chart change has merged).
 If recovery exceeds the disruption budget, point apps back at the old
 shared Cluster by reverting the DSN flip commit on the branch (a
-one-line edit in `argocd/root/templates/trakrf-backend.yaml` +
-`trakrf-ingester.yaml`).
+one-line edit in `argocd/root/templates/trakrf-backend.yaml`).

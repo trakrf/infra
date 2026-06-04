@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trakrf-mosquitto.fullname" . }}
+  labels:
+    {{- include "trakrf-mosquitto.labels" . | nindent 4 }}
+  annotations:
+    # Stakater Reloader bounces this Deployment on changes to the broker auth
+    # Secret (creds rotation) and the cert Secret (cert-manager renewal every
+    # ~60 days). Mosquitto does not reliably pick up a new cert on SIGHUP.
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  # The broker holds MQTT sessions and binds a single LoadBalancer IP; never
+  # run overlapping pods. Recreate also frees the LB before the new pod binds.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "trakrf-mosquitto.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/mosquitto-configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "trakrf-mosquitto.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: mosquitto
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: mqtts
+              containerPort: 8883
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            # eclipse-mosquitto image's `mosquitto` user = UID 1883.
+            runAsUser: 1883
+            runAsGroup: 1883
+          readinessProbe:
+            tcpSocket:
+              port: 8883
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8883
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: mosquitto-config
+              mountPath: /mosquitto/config
+              readOnly: true
+            - name: mosquitto-tls
+              mountPath: /mosquitto/tls
+              readOnly: true
+            - name: mosquitto-auth
+              mountPath: /mosquitto/auth
+              readOnly: true
+            - name: mosquitto-data
+              mountPath: /mosquitto/data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.exporter.enabled }}
+        - name: mosquitto-exporter
+          image: "{{ .Values.exporter.image.repository }}:{{ .Values.exporter.image.tag }}"
+          imagePullPolicy: {{ .Values.exporter.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.exporter.port }}
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            # jryberg/mosquitto-exporter runs as nobody.
+            runAsUser: 65534
+            runAsGroup: 65534
+          env:
+            - name: BROKER_ENDPOINT
+              value: "tcp://localhost:1883"
+            - name: MQTT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.authSecret }}
+                  key: username
+            - name: MQTT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.authSecret }}
+                  key: password
+            - name: BIND_ADDRESS
+              value: ":{{ .Values.exporter.port }}"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.exporter.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: mosquitto-config
+          configMap:
+            name: {{ include "trakrf-mosquitto.fullname" . }}
+        - name: mosquitto-tls
+          secret:
+            secretName: {{ .Values.certSecret }}
+        - name: mosquitto-auth
+          secret:
+            secretName: {{ .Values.authSecret }}
+            items:
+              - key: passwd
+                path: passwd
+        - name: mosquitto-data
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

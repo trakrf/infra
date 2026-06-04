@@ -89,7 +89,7 @@ output "cloud_dns_zone_name_id" {
 
 # TRA-828 — per-env MQTT broker static IPs. Consumed by:
 #   - terraform/gcp/dns.tf A records for mqtt.{env}.gke.trakrf.id
-#   - scripts/apply-root-app.sh -> argocd/root values -> trakrf-ingester per-env LB IP
+#   - scripts/apply-root-app.sh -> argocd/root values -> trakrf-mosquitto per-env LB IP
 
 output "mqtt_preview_ip" {
   description = "Static IP for the preview MQTT LoadBalancer (mqtt.preview.gke.trakrf.id)"

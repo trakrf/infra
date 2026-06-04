@@ -12,10 +12,9 @@ This repo is public on purpose. It's a working reference for how we build: small
 
 ```mermaid
 graph LR
-  MQTT[MQTT Broker] --> ING[Go Ingester]
-  ING --> RPC[Redpanda Connect]
-  RPC --> DB[(CNPG<br/>TimescaleDB)]
-  DB --> API[Go Backend API]
+  RDR[Fixed RFID Readers] -->|MQTT / TLS| MQTT[Mosquitto Broker]
+  MQTT --> API[Go Backend API<br/>+ in-process MQTT subscriber]
+  API --> DB[(CNPG<br/>TimescaleDB)]
   API --> WEB[trakrf.app<br/>Cloudflare Pages]
 
   subgraph Observability
@@ -23,23 +22,22 @@ graph LR
     GRAF[Grafana]
     PROM --> GRAF
   end
-  ING -.metrics.-> PROM
+  MQTT -.metrics.-> PROM
   API -.metrics.-> PROM
   DB -.metrics.-> PROM
 
   subgraph Delivery
     ARGO[ArgoCD]
   end
-  ARGO -.syncs.-> ING
+  ARGO -.syncs.-> MQTT
   ARGO -.syncs.-> API
-  ARGO -.syncs.-> RPC
 
   subgraph Edge
     TR[Traefik v3]
     CM[cert-manager]
     CM -.issues TLS.-> TR
   end
-  TR --> ING
+  CM -.issues TLS.-> MQTT
   TR --> API
 
   subgraph Provisioning
@@ -50,7 +48,7 @@ graph LR
   end
 ```
 
-Sensors publish MQTT to a broker. A Go **ingester** forwards messages to **Redpanda Connect**, which transforms and writes them into **CloudNativePG** (CNPG) running **TimescaleDB**. A Go **backend API** serves the data to `trakrf.app`. **Traefik v3** fronts the cluster with **cert-manager** issuing wildcard certs via DNS-01 (Azure DNS on AKS, Cloud DNS on GKE — both authenticated by workload identity, no static credentials). **kube-prometheus-stack** scrapes everything; **ArgoCD** reconciles workloads from this repo using an app-of-apps **root chart** that re-parents per cluster; **OpenTofu** provisions the underlying cloud.
+Fixed RFID readers publish MQTT over TLS to a self-hosted **Mosquitto** broker. The Go **backend** runs an in-process MQTT subscriber that ingests messages straight into **CloudNativePG** (CNPG) running **TimescaleDB**, and the same backend serves that data to `trakrf.app`. **Traefik v3** fronts the cluster with **cert-manager** issuing wildcard certs via DNS-01 (Azure DNS on AKS, Cloud DNS on GKE — both authenticated by workload identity, no static credentials); cert-manager also issues the broker's `:8883` TLS listener cert. **kube-prometheus-stack** scrapes everything; **ArgoCD** reconciles workloads from this repo using an app-of-apps **root chart** that re-parents per cluster; **OpenTofu** provisions the underlying cloud.
 
 ## Why this architecture
 
@@ -58,11 +56,11 @@ Decisions we made, and why:
 
 - **Managed Kubernetes over self-managed k8s or proprietary container runtimes** — Managed control planes eliminate an entire class of ops work. ECS/Cloud Run/ACI lock you into per-cloud primitives; k8s keeps the door open to a second (or third) cloud.
 - **Multi-cloud across EKS, AKS, and GKE** — Started on EKS, then ported to AKS and GKE to prove the workload is portable and to land where the credits are. GKE is the active cluster; AKS is stopped (resources kept, can be started back up quickly); EKS is deprovisioned (state preserved, rebuilds from `just aws`). All three remain first-class targets — useful as templates if you want to self-host this stack on a specific cloud. Cluster-specific bits live in `values-<cluster>.yaml` overlays so the same chart deploys on any of the three.
-- **App-of-apps root chart with cluster overlay** — `argocd/root/` is a thin Helm chart that emits one `Application` per workload (`cert-manager`, `traefik`, `trakrf-db`, `trakrf-backend`, `trakrf-ingester`, …). Tofu outputs (workload-identity client IDs, static LB IPs, DNS zone names) are injected at install time by `scripts/apply-root-app.sh <cluster>`.
+- **App-of-apps root chart with cluster overlay** — `argocd/root/` is a thin Helm chart that emits one `Application` per workload (`cert-manager`, `traefik`, `trakrf-db`, `trakrf-backend`, `trakrf-mosquitto`, …). Tofu outputs (workload-identity client IDs, static LB IPs, DNS zone names) are injected at install time by `scripts/apply-root-app.sh <cluster>`.
 - **Traefik + cert-manager with workload-identity DNS-01** — Wildcard cert via DNS-01, federated to Azure UAI / GCP service account, no API keys at rest. Static load-balancer IP provisioned in Terraform and pinned to Traefik via the cluster overlay.
 - **CloudNativePG over CrunchyData PGO** — A community CNPG-compatible TimescaleDB image (`ghcr.io/clevyr/cloudnativepg-timescale`) made the CNPG path viable for a Timescale-backed workload, and that drove the choice. CNPG is also lighter and Kubernetes-native, and its bootstrap lets us scope role grants to a specific schema. The CrunchyData operator is more featureful but heavier than we need for a single tenant.
 - **ArgoCD over Flux** — The UI is worth something for a portfolio project and for on-call debugging. App-of-apps pattern keeps the manifests discoverable.
-- **Helm charts committed in-repo** — `helm/trakrf-backend`, `helm/trakrf-ingester`, `helm/monitoring`, `helm/cert-manager-config`, `helm/traefik-config`, `helm/cnpg`, `helm/trakrf-db` are versioned alongside the infra that deploys them. No surprise upgrades from upstream registries.
+- **Helm charts committed in-repo** — `helm/trakrf-backend`, `helm/trakrf-mosquitto`, `helm/monitoring`, `helm/cert-manager-config`, `helm/traefik-config`, `helm/cnpg`, `helm/trakrf-db` are versioned alongside the infra that deploys them. No surprise upgrades from upstream registries.
 - **kube-prometheus-stack and CNPG installed via Helm, not ArgoCD** — Tried ArgoCD first for kube-prometheus; webhook admission + server-side apply interactions made it fragile. CRD-heavy charts are happier as a direct `helm upgrade`. ArgoCD still manages the application workloads.
 - **Per-cloud OpenTofu roots** — `terraform/cloudflare/`, `terraform/aws/`, `terraform/azure/`, `terraform/gcp/` apply independently. The seam keeps the DNS/edge layer portable and lets each cloud move at its own pace.
 - **OpenTofu over Terraform** — Licensing. Same HCL, open governance.
@@ -79,7 +77,7 @@ Decisions we made, and why:
 | `helm/cnpg/` | CloudNativePG operator values (per-cluster overlays). |
 | `helm/trakrf-db/` | CNPG `Cluster` for the `trakrf` namespace. |
 | `helm/trakrf-backend/` | Go API chart (includes migration job). |
-| `helm/trakrf-ingester/` | MQTT ingester chart. |
+| `helm/trakrf-mosquitto/` | Self-hosted Mosquitto MQTT broker chart (TLS :8883, static LB IP). |
 | `helm/cert-manager-config/` | `ClusterIssuer` + wildcard `Certificate` per cluster (Cloudflare, Azure DNS, or Cloud DNS solver). |
 | `helm/traefik-config/` | `IngressClass`, default middlewares, TLS store wired to the wildcard secret. |
 | `helm/monitoring/` | `kube-prometheus-stack` values, dashboards, out-of-chart manifests (CNPG `ServiceMonitor`, per-cluster Grafana `IngressRoute`). |
@@ -128,22 +126,19 @@ just grafana-password
 just grafana-ui             # port-forward to :3000
 ```
 
-ArgoCD will sync `cert-manager`, `traefik`, the CNPG `Cluster`, `trakrf-backend`, and `trakrf-ingester` automatically. The `db-secrets` and `mosquitto-secrets` recipes create the role/MQTT credentials that have to exist before the workloads come up — see [`helm/README.md`](helm/README.md).
+ArgoCD will sync `cert-manager`, `traefik`, the CNPG `Cluster`, `trakrf-backend`, and `trakrf-mosquitto` automatically. The `db-secrets` and `mosquitto-secrets` recipes create the role/MQTT credentials that have to exist before the workloads come up — see [`helm/README.md`](helm/README.md).
 
 > **Note on root chart edits.** Changes under `argocd/root/templates/*` don't auto-sync — they require re-running `scripts/apply-root-app.sh <cluster>` to bump the root chart and re-template the tofu outputs.
 
 ## Observability
 
-Five dashboards ship with the monitoring stack. Screenshots from the live cluster:
+Dashboards ship with the monitoring stack. Screenshots from the live cluster:
 
 **Grafana — dashboard index**
 ![Grafana dashboards list](docs/screenshots/m1/01-grafana-dashboards-list.png)
 
 **CloudNativePG — cluster health, replication lag, WAL throughput**
 ![CNPG dashboard](docs/screenshots/m1/02-cnpg-dashboard.png)
-
-**Redpanda Connect — pipeline throughput and errors**
-![Redpanda Connect dashboard](docs/screenshots/m1/03-redpanda-connect-dashboard.png)
 
 **Kubernetes cluster overview — nodes, pods, resource pressure**
 ![K8s cluster overview](docs/screenshots/m1/04-k8s-cluster-overview.png)
@@ -157,7 +152,7 @@ What's demo-grade today vs. what production would need:
 
 - **Ingress / TLS** — ✅ Traefik v3 + cert-manager with DNS-01 wildcard, federated to a per-cloud workload identity (Azure UAI on AKS, GSA on GKE). No static credentials in the cluster.
 - **High availability** — Single-zone node pool to keep demo cost down. Production wants ≥2 zones, multi-AZ CNPG, and a PDB on each workload. CNPG node pinning pattern (dedicated node group, taint+label) is in place on the EKS lineage and ready to port.
-- **Autoscaling** — No HPAs yet. Backend and ingester are CPU-bound under load; add HPAs before any real traffic.
+- **Autoscaling** — No HPAs yet. The backend (API + MQTT subscriber) is CPU-bound under load; add HPAs before any real traffic. Note the MQTT subscriber pins the backend to a single replica until `$share` shared-subscriptions land, so horizontal scale-out there is gated on that work.
 - **Backup / DR** — CNPG supports `barmanObjectStore` to object storage; not configured. Production needs continuous WAL archival plus scheduled base backups, and a documented restore drill.
 - **Secrets management** — Kubernetes `Secret`s today. Planned: External Secrets Operator against the cloud's native KMS-backed store (AWS Secrets Manager / Azure Key Vault / GCP Secret Manager) so the per-cluster overlay handles it.
 - **Authentication** — No user auth on Grafana/ArgoCD beyond the built-in admins. Planned: Kanidm as IdP with OIDC into both.

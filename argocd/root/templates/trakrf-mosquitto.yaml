@@ -1,0 +1,26 @@
+{{- /*
+  One trakrf-mosquitto Application per env — GKE-only. The standalone Mosquitto
+  broker exists only on GKE; AKS/EKS have no broker, so we simply emit nothing
+  there (no disabled overlays to carry). Per-env hostname + static LB IP
+  (Tofu-sourced envs.<env>.mqttIp) are injected via inlineValues; fixed readers
+  and the in-backend Go subscriber (TRA-900/TRA-920) connect at
+  mqtt.<env>.gke.trakrf.id:8883. Replaces the broker half of the retired
+  trakrf-ingester chart (TRA-907).
+*/ -}}
+{{- if eq $.Values.cluster "gke" }}
+{{- range $env, $cfg := $.Values.envs }}
+{{- $values := printf "hostname: mqtt.%s.gke.trakrf.id\nloadBalancerIP: %s\n" $env $cfg.mqttIp }}
+---
+{{- include "trakrf.application" (dict
+  "name" (printf "trakrf-mosquitto-%s" $env)
+  "path" "helm/trakrf-mosquitto"
+  "namespace" (printf "trakrf-%s" $env)
+  "syncWave" "1"
+  "cluster" $.Values.cluster
+  "repoURL" $.Values.repoURL
+  "targetRevision" $.Values.targetRevision
+  "destination" $.Values.destination
+  "inlineValues" $values
+) }}
+{{- end }}
+{{- end }}

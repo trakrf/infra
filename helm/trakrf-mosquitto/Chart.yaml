@@ -1,0 +1,7 @@
+apiVersion: v2
+name: trakrf-mosquitto
+description: Self-hosted Mosquitto MQTT broker (TLS :8883) for TrakRF fixed-reader ingestion
+type: application
+version: 0.1.0
+# Tracks the eclipse-mosquitto image tag pinned in values.yaml.
+appVersion: "2.0.21"

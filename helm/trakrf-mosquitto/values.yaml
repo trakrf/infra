@@ -1,0 +1,71 @@
+# Default values for trakrf-mosquitto.
+#
+# Standalone Mosquitto broker on GKE (TRA-828, extracted from the retired
+# trakrf-ingester chart in TRA-907). One pod = mosquitto + metrics exporter.
+# Fixed readers and the in-backend Go subscriber (TRA-900/TRA-920) connect over
+# TLS at mqtt.<env>.gke.trakrf.id:8883.
+
+# Drop the doubled `<release>-<chart>` pod/resource name.
+fullnameOverride: trakrf-mosquitto
+
+# Public broker hostname + static LB IP. Both are injected per-env by the root
+# chart (argocd/root/templates/trakrf-mosquitto.yaml) from Tofu outputs; empty
+# here so a bare `helm template` still renders.
+hostname: ""
+loadBalancerIP: ""
+
+image:
+  repository: eclipse-mosquitto
+  tag: "2.0.21"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Broker auth Secret. Reflector mirrors this from trakrf-system into per-env
+# namespaces. Created by `just mosquitto-secrets`. Keys:
+#   passwd    — mosquitto password_file (single username:hash line)
+#   username  — literal MQTT username (consumed by the exporter env)
+#   password  — literal MQTT password (same)
+authSecret: trakrf-mosquitto-auth
+
+# cert-manager-issued TLS cert Secret for the :8883 listener; created by the
+# per-env Certificate (templates/certificate.yaml). Same name the retired
+# ingester chart used, so the existing Secret carries over without re-issue.
+certSecret: trakrf-mqtt-tls
+
+podSecurityContext: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+exporter:
+  enabled: true
+  image:
+    # jryberg/mosquitto-exporter is a multi-arch fork of sapcc/mosquitto-exporter
+    # (sapcc upstream is amd64-only → "exec format error" on GKE T2A ARM nodes).
+    # Same env contract: BROKER_ENDPOINT, MQTT_USER, MQTT_PASS, BIND_ADDRESS.
+    repository: jryberg/mosquitto-exporter
+    tag: "v0.7.7"
+    pullPolicy: IfNotPresent
+  port: 9234
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
