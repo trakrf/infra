@@ -24,6 +24,13 @@
 {{- if $cfg.imageTag }}
 {{- $base = printf "%simage:\n  tag: %q\n" $base $cfg.imageTag }}
 {{- end }}
+{{- /* TRA-920: enable live MQTT ingestion. mqtt.host is the chart's enable
+       trigger; clientId is distinct per env (and from the RC ingester) to avoid
+       broker duplicate-id eviction. port/scheme/topic/authSecret come from the
+       chart defaults in helm/trakrf-backend/values.yaml. */ -}}
+{{- if $cfg.mqttEnabled }}
+{{- $base = printf "%smqtt:\n  host: mqtt.%s.gke.trakrf.id\n  clientId: trakrf-backend-%s-%s\n" $base $env $.Values.cluster $env }}
+{{- end }}
 {{- $ingress := "ingress:\n  enabled: false\n" }}
 {{- if $cfg.ingressEnabled }}
 {{- $ingressCtx := dict

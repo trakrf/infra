@@ -29,6 +29,12 @@ namespaces:
 #                                in its own namespace.
 # ingressEnabled               — gates the preview-style ingress + IPAllowList.
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
+# mqttEnabled                  — TRA-920: wires MQTT_URL onto the backend so the
+#                                in-backend Go subscriber starts ingesting from
+#                                mqtt.<env>.gke.trakrf.id. preview=true; prod=false
+#                                until cutover (see TRA-920 prod checklist). GKE-only
+#                                (broker host is .gke.); harmless if ever set on a
+#                                cluster whose backend image predates TRA-900.
 # imageTag                     — trakrf-backend image tag override. Empty falls
 #                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
 #                                On GKE BOTH envs are image-updater-tracked
@@ -73,6 +79,7 @@ envs:
     ingressEnabled: true
     appTrakrfIdHost: app.preview.trakrf.id
     mqttIp: ""
+    mqttEnabled: true
     imageTag: ""
     environmentLabel: preview
     jwtExpirationSeconds: "900"
@@ -87,6 +94,7 @@ envs:
     ingressEnabled: true
     appTrakrfIdHost: app.trakrf.id
     mqttIp: ""
+    mqttEnabled: false  # flip to true at prod cutover — see TRA-920 prod checklist
     # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
     # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
     # the Application (immutable ref → kubelet pulls the exact build, fixing

@@ -50,6 +50,28 @@ spec:
                   key: password
             - name: PG_URL
               value: "postgresql://{{ .Values.database.user }}:$(PG_PASSWORD)@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode={{ .Values.database.sslmode }}&options=-c%20search_path%3D{{ .Values.database.searchPath }}"
+            {{- if .Values.mqtt.host }}
+            # MQTT ingestion subscriber (TRA-920). MQTT_URL is composed via k8s
+            # $(VAR) interpolation from the broker auth Secret — no creds in git.
+            # MQTT_USER/MQTT_PASSWORD MUST precede MQTT_URL for interpolation.
+            # See feedback_k8s_dsn_composition.
+            - name: MQTT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mqtt.authSecret }}
+                  key: username
+            - name: MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mqtt.authSecret }}
+                  key: password
+            - name: MQTT_URL
+              value: "{{ .Values.mqtt.scheme }}://$(MQTT_USER):$(MQTT_PASSWORD)@{{ .Values.mqtt.host }}:{{ .Values.mqtt.port }}"
+            - name: MQTT_TOPIC
+              value: {{ .Values.mqtt.topic | quote }}
+            - name: MQTT_CLIENT_ID
+              value: {{ .Values.mqtt.clientId | quote }}
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "trakrf-backend.fullname" . }}

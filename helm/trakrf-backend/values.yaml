@@ -104,6 +104,37 @@ database:
   # Schema name itself is still hardcoded across migrations + Go — TRA-278.
   searchPath: "public,trakrf"
 
+# MQTT ingestion (TRA-920 / TRA-900). The in-backend Go subscriber starts only
+# when MQTT_URL is non-empty (serve.go gate). Empty `host` here => no MQTT env
+# rendered => subscriber inert. Preview turns this on via the root chart
+# inlineValues (argocd/root/templates/trakrf-backend.yaml); prod/AKS/EKS stay
+# off. Credentials come from the broker auth Secret (trakrf-mosquitto-auth,
+# Reflector-mirrored into the env namespace, shared with the ingester) and are
+# composed into MQTT_URL via k8s $(VAR) interpolation — no creds in git.
+# See feedback_k8s_dsn_composition + feedback_mqtt_clientid_per_cluster.
+#
+# Keep the backend at 1 replica (replicaCount: 1, autoscaling.enabled: false)
+# while MQTT is on: non-shared subscriptions fan out every message to every
+# connected client, so extra replicas double-write asset_scans until $share/...
+# shared subscriptions land (TRA-907).
+mqtt:
+  # Broker LB hostname. Empty = MQTT disabled. Set per-env by the root chart.
+  host: ""
+  port: 8883
+  # mqtts (TLS): the backend is a separate pod from the broker, reaching it over
+  # the public LB hostname (Let's Encrypt cert SAN), not the ingester's loopback.
+  scheme: mqtts
+  # trakrf.id/# is correct for single-replica preview. Switch to a $share/...
+  # group topic when multi-replica lands (TRA-907).
+  topic: "trakrf.id/#"
+  # Distinct base clientId (overridden per-env by the root chart). Must differ
+  # from the RC ingester's clientId so the broker doesn't evict one while both
+  # are connected; the subscriber also appends the pod hostname at runtime.
+  clientId: trakrf-backend
+  # Broker auth Secret (username/password keys). Created by `just
+  # mosquitto-secrets`, mirrored into the env namespace by Reflector.
+  authSecret: trakrf-mosquitto-auth
+
 # Non-secret config (ConfigMap)
 config:
   appEnv: production
