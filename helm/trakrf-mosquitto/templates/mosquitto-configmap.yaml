@@ -1,16 +1,15 @@
-{{- if .Values.broker.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "trakrf-ingester.fullname" . }}-mosquitto
+  name: {{ include "trakrf-mosquitto.fullname" . }}
   labels:
-    {{- include "trakrf-ingester.labels" . | nindent 4 }}
+    {{- include "trakrf-mosquitto.labels" . | nindent 4 }}
 data:
   mosquitto.conf: |
     # Per-listener auth (so the loopback plain listener can require auth too).
     per_listener_settings true
 
-    # Loopback-only plain listener for the ingester + exporter sidecars.
+    # Loopback-only plain listener for the metrics exporter sidecar.
     # Authenticated; never reachable from outside the pod (bound to 127.0.0.1).
     listener 1883 127.0.0.1
     allow_anonymous false
@@ -35,4 +34,3 @@ data:
 
     # Log to stdout so kubectl logs sees broker events.
     log_dest stdout
-{{- end }}

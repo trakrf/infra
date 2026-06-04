@@ -1,0 +1,10 @@
+# GKE overlay for trakrf-mosquitto.
+#
+# GKE auto-applies kubernetes.io/arch=arm64:NoSchedule to ARM node pools
+# (T2A/T2D/Axion). AKS Ubuntu does not. Toleration scoped to the GKE overlay
+# only. See TRA-470 and memory feedback_gke_arm_auto_taint.
+tolerations:
+  - key: kubernetes.io/arch
+    operator: Equal
+    value: arm64
+    effect: NoSchedule

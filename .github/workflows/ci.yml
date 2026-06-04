@@ -41,10 +41,11 @@ jobs:
           # upstream kube-prometheus-stack chart — applied via 'just
           # monitoring-bootstrap CLUSTER', not lintable as a standalone chart.
           # helm/cnpg/ is similar (values-only for upstream cnpg/cloudnative-pg).
+          # helm/trakrf-mosquitto/ is GKE-only (no eks/aks overlays) — linted in
+          # its own helm-mosquitto job below.
           - cert-manager-config
           - traefik-config
           - trakrf-backend
-          - trakrf-ingester
           - trakrf-db
         cluster: [eks, aks]
     steps:
@@ -60,6 +61,26 @@ jobs:
           helm template helm/${{ matrix.chart }} \
             -f helm/${{ matrix.chart }}/values.yaml \
             -f helm/${{ matrix.chart }}/values-${{ matrix.cluster }}.yaml
+
+  helm-mosquitto:
+    # GKE-only broker chart (TRA-907) — not part of the eks/aks matrix above.
+    name: helm lint + template (trakrf-mosquitto / gke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint chart with GKE overlay
+        run: |
+          helm lint helm/trakrf-mosquitto \
+            -f helm/trakrf-mosquitto/values.yaml \
+            -f helm/trakrf-mosquitto/values-gke.yaml
+      - name: Template chart with GKE overlay
+        run: |
+          helm template helm/trakrf-mosquitto \
+            -f helm/trakrf-mosquitto/values.yaml \
+            -f helm/trakrf-mosquitto/values-gke.yaml \
+            --set hostname=mqtt.preview.gke.trakrf.id \
+            --set loadBalancerIP=1.2.3.4
 
   argocd-root:
     name: helm template argocd/root (${{ matrix.cluster }})
@@ -100,6 +121,10 @@ jobs:
             exit 1
           fi
 
+  # The trakrf-ingester chart was retired in TRA-907 (replaced by the in-backend
+  # subscriber + the standalone helm/trakrf-mosquitto chart). This shim is kept
+  # ONLY so the legacy required status context stays green; drop it once branch
+  # protection no longer requires "helm lint + template (trakrf-ingester)".
   helm-required-ingester:
     name: helm lint + template (trakrf-ingester)
     runs-on: ubuntu-latest

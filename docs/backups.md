@@ -71,8 +71,9 @@ constraints. Any manual restore needs the same bracketing.
 
 For a real restore-to-prod scenario:
 
-1. **Stop writers.** Scale `trakrf-backend` and `trakrf-ingester`
-   Deployments to 0 in the affected namespace.
+1. **Stop writers.** Scale the `trakrf-backend` Deployment to 0 in the
+   affected namespace (it runs the MQTT ingestion subscriber). The
+   `trakrf-mosquitto` broker is not a DB writer and can stay up.
 2. **Identify the dump.** Pick the target object in
    `gs://<bucket>/<env>/`.
 3. **Restore into a parallel database** (e.g. `trakrf_<env>_restore`),

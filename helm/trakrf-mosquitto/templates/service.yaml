@@ -1,0 +1,18 @@
+{{- if .Values.exporter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "trakrf-mosquitto.fullname" . }}
+  labels:
+    {{- include "trakrf-mosquitto.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None  # headless — no virtual IP needed for scrape
+  selector:
+    {{- include "trakrf-mosquitto.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.exporter.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

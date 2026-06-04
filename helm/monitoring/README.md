@@ -40,7 +40,7 @@ re-run `just monitoring-bootstrap`.
 
 ## ServiceMonitors
 
-App charts own their own ServiceMonitors (e.g. `helm/trakrf-ingester/`).
+App charts own their own ServiceMonitors (e.g. `helm/trakrf-backend/`, `helm/trakrf-mosquitto/`).
 The Prometheus operator is configured with `*SelectorNilUsesHelmValues:
 false`, so any ServiceMonitor in any namespace is discovered without
 release-specific labels.

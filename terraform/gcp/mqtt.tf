@@ -10,7 +10,7 @@ resource "google_compute_address" "mqtt_preview" {
   address_type = "EXTERNAL"
   network_tier = "PREMIUM"
 
-  description = "Static LB IP for trakrf-ingester preview MQTT — pinned via Service.spec.loadBalancerIP (TRA-828)"
+  description = "Static LB IP for trakrf-mosquitto preview MQTT — pinned via Service.spec.loadBalancerIP (TRA-828)"
 
   labels = merge(local.common_labels, { ticket = "tra-828" })
 
@@ -25,7 +25,7 @@ resource "google_compute_address" "mqtt_prod" {
   address_type = "EXTERNAL"
   network_tier = "PREMIUM"
 
-  description = "Static LB IP for trakrf-ingester prod MQTT — pinned via Service.spec.loadBalancerIP (TRA-828)"
+  description = "Static LB IP for trakrf-mosquitto prod MQTT — pinned via Service.spec.loadBalancerIP (TRA-828)"
 
   labels = merge(local.common_labels, { ticket = "tra-828" })
 

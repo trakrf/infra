@@ -155,17 +155,17 @@ _db-secret ROLE NS PW:
 
 # Create the Mosquitto broker auth Secret in trakrf-system with reflector
 # annotations so it mirrors into trakrf-preview / trakrf-prod. Run BEFORE the
-# trakrf-ingester pods come up — they mount this Secret for the loopback
-# password_file + the ingester/exporter env credentials.
+# trakrf-mosquitto broker pods come up — they mount this Secret for the loopback
+# password_file + the exporter (and trakrf-backend subscriber) env credentials.
 #
 # Requires in .env.local:
-#   MOSQUITTO_USER       e.g. trakrf-ingester
+#   MOSQUITTO_USER       e.g. trakrf-mqtt (arbitrary shared broker username)
 #   MOSQUITTO_PASSWORD   generate with `openssl rand -hex 32`
 #                        (base64 has /+ which breaks URL-composed DSNs;
 #                        see feedback_db_password_alphabet)
 #
 # Idempotent. Re-running rotates the Secret; Stakater Reloader bounces both
-# env pods automatically (the trakrf-ingester Deployment carries the
+# env pods automatically (the trakrf-mosquitto Deployment carries the
 # `reloader.stakater.com/auto: "true"` annotation).
 mosquitto-secrets:
     @kubectl create namespace trakrf-system --dry-run=client -o yaml | kubectl apply -f -
@@ -175,8 +175,8 @@ mosquitto-secrets:
     @test -n "${MOSQUITTO_PASSWORD:-}" || { echo "ERROR: MOSQUITTO_PASSWORD not set in .env.local"; exit 1; }
     @# Use a throwaway eclipse-mosquitto container so we don't depend on a host
     @# mosquitto_passwd binary. Writes the hashed password_file to stdout, then
-    @# folds it into a Secret alongside literal username/password for ingester
-    @# + exporter env wiring.
+    @# folds it into a Secret alongside literal username/password for the
+    @# exporter + trakrf-backend subscriber env wiring.
     @PASSWD_FILE=$(docker run --rm eclipse-mosquitto:2.0.21 sh -c \
       "mosquitto_passwd -b -c /tmp/passwd '${MOSQUITTO_USER}' '${MOSQUITTO_PASSWORD}' >/dev/null && cat /tmp/passwd") && \
      kubectl create secret generic trakrf-mosquitto-auth -n trakrf-system \

@@ -8,6 +8,16 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  {{- if .Values.mqtt.host }}
+  # Single-subscriber guarantee while MQTT ingestion is on (TRA-907). A default
+  # RollingUpdate surge would briefly run two subscribing pods, and both insert
+  # asset_scans with their own server received_at → distinct (timestamp,org,asset)
+  # PKs that ON CONFLICT can't dedup → duplicate rows. Recreate trades a brief
+  # deploy gap for correctness. MQTT-off envs keep zero-downtime RollingUpdate.
+  # Durable fix for both this and steady-state multi-replica is $share.
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "trakrf-backend.selectorLabels" . | nindent 6 }}
