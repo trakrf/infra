@@ -4,19 +4,30 @@ metadata:
   name: {{ include "trakrf-backend.fullname" . }}
   labels:
     {{- include "trakrf-backend.labels" . | nindent 4 }}
+  annotations:
+    # Stakater Reloader bounces the backend when a mounted ConfigMap/Secret
+    # changes (TRA-907 follow-up) — e.g. the trakrf-mosquitto-auth MQTT creds or
+    # the CNPG role secret — so credential rotations don't need a manual restart.
+    reloader.stakater.com/auto: "true"
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   {{- if .Values.mqtt.host }}
-  # Single-subscriber guarantee while MQTT ingestion is on (TRA-907). A default
-  # RollingUpdate surge would briefly run two subscribing pods, and both insert
-  # asset_scans with their own server received_at → distinct (timestamp,org,asset)
-  # PKs that ON CONFLICT can't dedup → duplicate rows. Recreate trades a brief
-  # deploy gap for correctness. MQTT-off envs keep zero-downtime RollingUpdate.
-  # Durable fix for both this and steady-state multi-replica is $share.
+  # Single-subscriber guard while MQTT ingestion is on (TRA-907 follow-up).
+  # A rollout surge would briefly run two subscribing pods, and both insert
+  # asset_scans with their own received_at → distinct (timestamp,org,asset) PKs
+  # that ON CONFLICT can't dedup → duplicate rows. maxSurge:0 keeps the rollout
+  # to one pod at a time (no overlap) WITHOUT a strategy-type flip: type:Recreate
+  # under ArgoCD server-side-diff wedges sync on the live deploy's leftover
+  # rollingUpdate block (see feedback_argocd_recreate_strategy_ssa_conflict).
+  # MQTT-off envs inherit the chart default surge. $share is the durable fix for
+  # both this and steady-state multi-replica.
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   {{- end }}
   selector:
     matchLabels:
