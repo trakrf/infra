@@ -24,3 +24,9 @@ spec:
       port: 8883
       targetPort: mqtts
       protocol: TCP
+    {{- if .Values.websocket.enabled }}
+    - name: wss
+      port: {{ .Values.websocket.port }}
+      targetPort: wss
+      protocol: TCP
+    {{- end }}
