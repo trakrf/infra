@@ -163,14 +163,6 @@ _db-secret ROLE NS PW:
 #   MOSQUITTO_PASSWORD   generate with `openssl rand -hex 32`
 #                        (base64 has /+ which breaks URL-composed DSNs;
 #                        see feedback_db_password_alphabet)
-#   MOSQUITTO_FRONTEND_USER      (optional) read-only frontend user; default
-#                        frontend-readonly. Subscribe-only on trakrf.id/+/reads
-#                        (acl in the trakrf-mosquitto chart). TRA-902 reader feed.
-#   MOSQUITTO_FRONTEND_PASSWORD  (optional) if set, a 2nd user is added to the
-#                        password_file + literal creds to the Secret
-#                        (frontend_username/frontend_password) for the public
-#                        VITE bundle. Unset → skipped.
-#
 # Idempotent. Re-running rotates the Secret; Stakater Reloader bounces both
 # env pods automatically (the trakrf-mosquitto Deployment carries the
 # `reloader.stakater.com/auto: "true"` annotation).
@@ -181,21 +173,15 @@ mosquitto-secrets:
     @test -n "${MOSQUITTO_USER:-}" || { echo "ERROR: MOSQUITTO_USER not set in .env.local"; exit 1; }
     @test -n "${MOSQUITTO_PASSWORD:-}" || { echo "ERROR: MOSQUITTO_PASSWORD not set in .env.local"; exit 1; }
     @# Use a throwaway eclipse-mosquitto container so we don't depend on a host
-    @# mosquitto_passwd binary. Builds the hashed password_file (the shared user,
-    @# plus an optional read-only frontend user when MOSQUITTO_FRONTEND_PASSWORD
-    @# is set), then folds it into a Secret alongside the literal creds (the
-    @# frontend_* keys feed the public VITE bundle for the TRA-902 reader feed).
-    @FRONTEND_USER="${MOSQUITTO_FRONTEND_USER:-frontend-readonly}"; \
-     PASSWD_FILE=$(docker run --rm eclipse-mosquitto:2.0.21 sh -c \
+    @# mosquitto_passwd binary. Builds the hashed password_file for the shared
+    @# trakrf-mqtt user, then folds it into a Secret alongside the literal creds.
+    @PASSWD_FILE=$(docker run --rm eclipse-mosquitto:2.0.21 sh -c \
       "mosquitto_passwd -b -c /tmp/passwd '${MOSQUITTO_USER}' '${MOSQUITTO_PASSWORD}' >/dev/null; \
-       if [ -n '${MOSQUITTO_FRONTEND_PASSWORD:-}' ]; then mosquitto_passwd -b /tmp/passwd '${FRONTEND_USER}' '${MOSQUITTO_FRONTEND_PASSWORD}' >/dev/null; fi; \
        cat /tmp/passwd") && \
      kubectl create secret generic trakrf-mosquitto-auth -n trakrf-system \
        --from-literal=passwd="$PASSWD_FILE" \
        --from-literal=username="${MOSQUITTO_USER}" \
        --from-literal=password="${MOSQUITTO_PASSWORD}" \
-       --from-literal=frontend_username="${FRONTEND_USER}" \
-       --from-literal=frontend_password="${MOSQUITTO_FRONTEND_PASSWORD:-}" \
        --dry-run=client -o yaml | kubectl apply -f -
     @kubectl annotate --overwrite secret trakrf-mosquitto-auth -n trakrf-system \
       reflector.v1.k8s.emberstack.com/reflection-allowed=true \
