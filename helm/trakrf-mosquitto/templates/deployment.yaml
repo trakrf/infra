@@ -39,6 +39,11 @@ spec:
             - name: mqtts
               containerPort: 8883
               protocol: TCP
+            {{- if .Values.websocket.enabled }}
+            - name: wss
+              containerPort: {{ .Values.websocket.port }}
+              protocol: TCP
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

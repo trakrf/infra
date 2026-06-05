@@ -25,6 +25,22 @@ data:
     tls_version tlsv1.2
     allow_anonymous false
     password_file /mosquitto/auth/passwd
+    acl_file /mosquitto/config/acl
+    {{- if .Values.websocket.enabled }}
+
+    # WebSocket (TLS) listener for the browser reader live-view (TRA-902).
+    # mqtt.js over WSS. Same LE cert; TLS terminates here (LB is L4 passthrough).
+    # Auth + ACL enforced — the frontend uses the read-only `frontend-readonly`
+    # user (read trakrf.id/+/reads only). No anonymous.
+    listener {{ .Values.websocket.port }} 0.0.0.0
+    protocol websockets
+    certfile /mosquitto/tls/tls.crt
+    keyfile  /mosquitto/tls/tls.key
+    tls_version tlsv1.2
+    allow_anonymous false
+    password_file /mosquitto/auth/passwd
+    acl_file /mosquitto/config/acl
+    {{- end }}
 
     # Stateless broker — current device traffic is QoS 0, so persistence is
     # inert. Sidesteps the zonal-PD AZ-orphan trap (TRA-364). emptyDir is
@@ -34,3 +50,15 @@ data:
 
     # Log to stdout so kubectl logs sees broker events.
     log_dest stdout
+  # Per-user ACL applied on the public listeners (:8883 + :8084). The loopback
+  # :1883 listener has no acl_file, so the metrics exporter's $SYS reads stay
+  # unrestricted. trakrf-mqtt stays broad (backend subscriber + TRA-906 command
+  # publisher + readers — unchanged); frontend-readonly is subscribe-only on the
+  # read topics (cross-org by design; the frontend filters client-side). TRA-857
+  # tracks tighter per-user scoping.
+  acl: |
+    user trakrf-mqtt
+    topic readwrite #
+
+    user frontend-readonly
+    topic read trakrf.id/+/reads
