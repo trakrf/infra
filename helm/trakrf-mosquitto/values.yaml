@@ -33,12 +33,14 @@ authSecret: trakrf-mosquitto-auth
 # ingester chart used, so the existing Secret carries over without re-issue.
 certSecret: trakrf-mqtt-tls
 
-# WebSocket (WSS) listener for the browser reader live-view (TRA-902). mqtt.js
-# over WSS from the frontend, reusing the :8883 LE cert (TLS terminates at
-# mosquitto; the LB is L4 passthrough). Auth + ACL enforced (no anonymous).
-# The frontend-readonly user that uses it is created by `just mosquitto-secrets`.
+# WSS listener retired by TRA-924 — Live Reads moved to a backend SSE proxy
+# (org-enforced), so nothing connects to the broker from the browser anymore.
+# Disabled gates off the :8084 listener, its container port, AND the public
+# LoadBalancer wss port together. Kept as inert config for cheap reversibility;
+# if ever re-enabled it would be a cluster-internal listener only — do not
+# re-expose it on the public LB without revisiting the TRA-924 threat model.
 websocket:
-  enabled: true
+  enabled: false
   port: 8084
 
 podSecurityContext: {}

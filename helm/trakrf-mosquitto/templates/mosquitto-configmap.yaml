@@ -28,10 +28,11 @@ data:
     acl_file /mosquitto/config/acl
     {{- if .Values.websocket.enabled }}
 
-    # WebSocket (TLS) listener for the browser reader live-view (TRA-902).
-    # mqtt.js over WSS. Same LE cert; TLS terminates here (LB is L4 passthrough).
-    # Auth + ACL enforced — the frontend uses the read-only `frontend-readonly`
-    # user (read trakrf.id/+/reads only). No anonymous.
+    # WebSocket (TLS) listener — RETIRED by TRA-924 (disabled via
+    # websocket.enabled=false). Live Reads moved to a backend SSE proxy; nothing
+    # connects to the broker from the browser. Block kept inert for reversibility.
+    # NOTE: the `frontend-readonly` user no longer exists — re-enabling this
+    # listener would need a fresh ACL identity and must stay cluster-internal.
     listener {{ .Values.websocket.port }} 0.0.0.0
     protocol websockets
     certfile /mosquitto/tls/tls.crt
@@ -50,15 +51,12 @@ data:
 
     # Log to stdout so kubectl logs sees broker events.
     log_dest stdout
-  # Per-user ACL applied on the public listeners (:8883 + :8084). The loopback
-  # :1883 listener has no acl_file, so the metrics exporter's $SYS reads stay
+  # Per-user ACL applied on the public :8883 listener. The loopback :1883
+  # listener has no acl_file, so the metrics exporter's $SYS reads stay
   # unrestricted. trakrf-mqtt stays broad (backend subscriber + TRA-906 command
-  # publisher + readers — unchanged); frontend-readonly is subscribe-only on the
-  # read topics (cross-org by design; the frontend filters client-side). TRA-857
-  # tracks tighter per-user scoping.
+  # publisher + readers — unchanged). The TRA-902 `frontend-readonly` user was
+  # retired in TRA-924 (browser no longer touches the broker). TRA-857 tracks
+  # tighter per-user scoping.
   acl: |
     user trakrf-mqtt
     topic readwrite #
-
-    user frontend-readonly
-    topic read trakrf.id/+/reads
