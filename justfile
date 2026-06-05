@@ -449,3 +449,34 @@ db-restore-pitr-test TARGET_TIME="":
     echo "Tearing down scratch cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --wait=true
     echo "PITR restore proof complete."
+
+# ============================================================================
+# Worktree Support
+# ============================================================================
+
+# Symlink .env.local from the main worktree so direnv + env-dependent recipes
+# (tofu, *-secrets, apply-root-app) work from a worktree. The repo's .env.local
+# lives only in the main checkout (gitignored, not copied into worktrees), so a
+# bare worktree gets no env and tofu/R2 + mosquitto-secrets fail or run with
+# stale inherited values. Symlink (not copy) so secret rotations in main
+# propagate automatically. Safe to run repeatedly; no-op in the main worktree.
+worktree-bootstrap:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    main_dir=$(git worktree list --porcelain | awk '/^worktree /{p=$2} /^branch refs\/heads\/main$/{print p; exit}')
+    if [ -z "${main_dir:-}" ]; then
+        echo "❌ Cannot locate main worktree (no branch refs/heads/main in git worktree list)" >&2
+        exit 1
+    fi
+    here=$(git rev-parse --show-toplevel)
+    if [ "$main_dir" = "$here" ]; then
+        echo "ℹ️  Already in main worktree — nothing to bootstrap"
+        exit 0
+    fi
+    if [ ! -f "$main_dir/.env.local" ]; then
+        echo "❌ $main_dir/.env.local not found — nothing to link" >&2
+        exit 1
+    fi
+    ln -sf "$main_dir/.env.local" "$here/.env.local"
+    echo "✅ Linked .env.local from $main_dir"
+    echo "   Run \`direnv allow\` (or re-enter the dir) to load it."
