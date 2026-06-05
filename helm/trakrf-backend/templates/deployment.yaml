@@ -93,6 +93,24 @@ spec:
             - name: MQTT_CLIENT_ID
               value: {{ .Values.mqtt.clientId | quote }}
             {{- end }}
+            {{- if .Values.readerFeed.url }}
+            # Reader live-view feed (TRA-902). The backend stamps these into
+            # index.html (window.__APP_CONFIG__.readerFeed); the SPA's Live Reads
+            # tab connects the browser to the broker over WSS as the read-only
+            # frontend-readonly user. These land in pre-auth index.html (public);
+            # password is sourced from the secret (out of git), ACL = subscribe-only.
+            - name: READER_FEED_MQTT_URL
+              value: {{ .Values.readerFeed.url | quote }}
+            - name: READER_FEED_MQTT_USERNAME
+              value: {{ .Values.readerFeed.username | quote }}
+            - name: READER_FEED_MQTT_TOPIC
+              value: {{ .Values.readerFeed.topic | quote }}
+            - name: READER_FEED_MQTT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.readerFeed.passwordSecret }}
+                  key: {{ .Values.readerFeed.passwordSecretKey }}
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "trakrf-backend.fullname" . }}
