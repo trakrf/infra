@@ -31,12 +31,6 @@
 {{- if $cfg.mqttEnabled }}
 {{- $base = printf "%smqtt:\n  host: mqtt.%s.gke.trakrf.id\n  clientId: trakrf-backend-%s-%s\n" $base $env $.Values.cluster $env }}
 {{- end }}
-{{- /* TRA-902: reader live-view feed. readerFeed.url is the chart's enable
-       trigger (per-env WSS host); username/topic/password(secretKeyRef) come
-       from the chart defaults. GKE-only (broker WSS is gke). */ -}}
-{{- if and $cfg.readerFeedEnabled (eq $.Values.cluster "gke") }}
-{{- $base = printf "%sreaderFeed:\n  url: wss://mqtt.%s.gke.trakrf.id:8084/mqtt\n" $base $env }}
-{{- end }}
 {{- $ingress := "ingress:\n  enabled: false\n" }}
 {{- if $cfg.ingressEnabled }}
 {{- $ingressCtx := dict

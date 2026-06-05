@@ -139,23 +139,6 @@ mqtt:
   # mosquitto-secrets`, mirrored into the env namespace by Reflector.
   authSecret: trakrf-mosquitto-auth
 
-# Reader live-view feed (TRA-902). The backend stamps these into index.html
-# (window.__APP_CONFIG__.readerFeed) so the SPA's Live Reads tab subscribes the
-# browser directly to the broker over WSS as the read-only frontend-readonly
-# user (read trakrf.id/+/reads only). url empty = disabled (no READER_FEED_* env
-# rendered); preview turns it on via the root chart. The password comes from the
-# trakrf-mosquitto-auth secret (frontend_password key, added by `just
-# mosquitto-secrets`) — out of git. These land in PRE-AUTH index.html (public),
-# hence least-privilege subscribe-only; cross-org read exposure is a documented
-# pre-prod gate (see TRA-902).
-readerFeed:
-  # wss://mqtt.<env>.gke.trakrf.id:8084/mqtt — injected per-env by the root chart.
-  url: ""
-  username: frontend-readonly
-  topic: "trakrf.id/+/reads"
-  passwordSecret: trakrf-mosquitto-auth
-  passwordSecretKey: frontend_password
-
 # Non-secret config (ConfigMap)
 config:
   appEnv: production

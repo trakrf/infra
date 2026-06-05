@@ -35,12 +35,6 @@ namespaces:
 #                                until cutover (see TRA-920 prod checklist). GKE-only
 #                                (broker host is .gke.); harmless if ever set on a
 #                                cluster whose backend image predates TRA-900.
-# readerFeedEnabled            — TRA-902: injects READER_FEED_MQTT_* env onto the
-#                                backend (wss://mqtt.<env>.gke.trakrf.id:8084/mqtt
-#                                + frontend-readonly creds) so the SPA Live Reads
-#                                tab subscribes the browser to the broker. GKE-only.
-#                                preview=true; prod=false until the multi-tenant
-#                                cross-org gate is closed (see TRA-902 comment).
 # imageTag                     — trakrf-backend image tag override. Empty falls
 #                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
 #                                On GKE BOTH envs are image-updater-tracked
@@ -86,7 +80,6 @@ envs:
     appTrakrfIdHost: app.preview.trakrf.id
     mqttIp: ""
     mqttEnabled: true
-    readerFeedEnabled: true  # TRA-902: Live Reads tab WSS feed
     imageTag: ""
     environmentLabel: preview
     jwtExpirationSeconds: "900"
@@ -102,7 +95,6 @@ envs:
     appTrakrfIdHost: app.trakrf.id
     mqttIp: ""
     mqttEnabled: false  # flip to true at prod cutover — see TRA-920 prod checklist
-    readerFeedEnabled: false  # Live Reads stays off until the multi-tenant gate (see TRA-902)
     # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
     # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
     # the Application (immutable ref → kubelet pulls the exact build, fixing
