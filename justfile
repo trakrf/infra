@@ -60,6 +60,11 @@ origin-cert-secret:
       | kubectl apply -f -
     echo "trakrf-id-origin-tls applied in trakrf-system; reflector will mirror to trakrf-preview/trakrf-prod/monitoring."
 
+# Print the edge demo Cloudflare Tunnel token (TRA-957). Pipe into the box's
+# platform/deploy/edge/.env as TUNNEL_TOKEN. Sensitive — don't commit/log.
+tunnel-token:
+    @tofu -chdir=terraform/cloudflare output -raw demo_tunnel_token
+
 # Plan and apply AWS infrastructure (Route53, EKS)
 aws: (_backend-conf "terraform/aws")
     @echo "Planning AWS infrastructure..."
