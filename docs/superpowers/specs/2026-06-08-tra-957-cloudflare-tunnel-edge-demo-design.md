@@ -204,6 +204,15 @@ renewal is somehow missed; this timer keeps the **LAN/origin** cert fresh automa
   `cert-renew.timer` (DNS-01, outbound-only).
 - **Edge errors until the box connects** — once the CNAME flips, the hostname returns CF error
   1016 until `cloudflared` is running on the box. Apply infra and box side together.
+- **Two-label host needs ACM (found during apply, TRA-957)** — `app.demo.trakrf.id` is two
+  labels deep, so Free Universal SSL's `*.trakrf.id` does NOT cover it; the edge TLS handshake
+  fails (`sslv3 alert handshake failure`) even with the tunnel connected. Fix: a
+  `cloudflare_certificate_pack` advanced cert for `app.demo.trakrf.id` (`acm-demo.tf`) — same
+  gotcha/pattern as `app.preview.trakrf.id` (TRA-856). The zone already has ACM enabled, so no
+  billing action; the `terraform-infrastructure` token already has `SSL and Certificates Write`.
+- **Tunnel API token perm (found during apply)** — managing `cloudflare_zero_trust_tunnel_*`
+  needs account-scoped `Cloudflare Tunnel Read/Write`, which the `terraform-infrastructure` token
+  lacked (error 10000). Added in `terraform/bootstrap/main.tf` (in-place token update).
 
 ## Acceptance criteria
 
@@ -213,6 +222,7 @@ renewal is somehow missed; this timer keeps the **LAN/origin** cert fresh automa
 - [ ] On-Slate-WiFi clients still resolve to `.10` (split horizon intact).
 - [ ] Live Reads / SSE works over the tunnel (reconnect behavior acceptable).
 - [ ] Stale `A → 192.168.8.10` public record removed/replaced.
+- [ ] Edge cert for the two-label host provided by ACM advanced cert (`acm-demo.tf`).
 - [ ] Public path is robust to LE cert expiry (box-local leg uses `no_tls_verify`).
 - [ ] LE cert renews hands-free when the box has uplink (`cert-renew.timer` installed + enabled).
 
