@@ -28,3 +28,10 @@ output "cloudflare_ipv4_cidrs" {
 output "cloudflare_ipv6_cidrs" {
   value = data.cloudflare_ip_ranges.this.ipv6_cidr_blocks
 }
+
+# Cloudflare Tunnel connector token for the edge demo box (TRA-957).
+# Consumed by `just tunnel-token` → platform/deploy/edge/.env (TUNNEL_TOKEN).
+output "demo_tunnel_token" {
+  value     = cloudflare_zero_trust_tunnel_cloudflared.demo_edge.tunnel_token
+  sensitive = true
+}
