@@ -35,8 +35,15 @@ so no new data-exposure concern.
 
 ```
 off-LAN client ──TLS──> Cloudflare edge ──tunnel──> cloudflared (box) ──https://traefik:443──> Traefik ──> backend
-   (CF edge cert for app.demo.trakrf.id)              (TUNNEL_TOKEN)        (LE cert, SNI=app.demo.trakrf.id)
+   (CF edge cert for app.demo.trakrf.id)              (TUNNEL_TOKEN)        (box-local leg, no_tls_verify)
 ```
+
+The `cloudflared → traefik` leg is **box-local** (both containers on the same podman bridge;
+traffic never leaves the host), so it uses `no_tls_verify = true`. This deliberately **decouples
+the public path from the box's Let's Encrypt cert** — if that cert lapses, the public tunnel
+keeps serving (only LAN-direct clients would see a TLS error). `http_host_header` still carries
+the public hostname so Traefik routes correctly. See *Cert renewal* below for keeping the
+LAN/origin cert fresh.
 
 Split horizon (unchanged): the Slate's dnsmasq override `app.demo.trakrf.id → 192.168.8.10`
 stays, so on-Slate-WiFi devices go direct/local; everyone else resolves the public CF CNAME →
@@ -74,8 +81,8 @@ tunnel → box.
          hostname = "app.demo.${var.domain_name}"
          service  = "https://traefik:443"
          origin_request {
-           http_host_header   = "app.demo.${var.domain_name}"
-           origin_server_name = "app.demo.${var.domain_name}"
+           http_host_header = "app.demo.${var.domain_name}"  # route on Traefik
+           no_tls_verify    = true                            # box-local leg; decouple from LE expiry
          }
        }
        ingress_rule { service = "http_status:404" }   # required catch-all
@@ -139,11 +146,37 @@ WantedBy=default.target
 - `install.sh` already globs `*.container` → auto-symlinks the new quadlet (no change).
 
 ### `.env.example`
-Add a placeholder with a pointer to the source of truth:
+Add placeholders with pointers to the sources of truth:
 ```
 # Cloudflare Tunnel token (TRA-957) — get from `just tunnel-token` in trakrf/infra
 TUNNEL_TOKEN=CHANGEME
+# Cloudflare DNS API token for lego DNS-01 cert renewal (TRA-957)
+CLOUDFLARE_DNS_API_TOKEN=CHANGEME
 ```
+
+### Cert renewal — opportunistic, always-on
+
+The box's LE cert (`app.demo.trakrf.id`, 90-day) is currently renewed **manually** at pre-event
+prep — a model that assumed the box was offline at venues. The tunnel makes the box always-on, so
+we add hands-free renewal. DNS-01 is **outbound-only** (needs only `CLOUDFLARE_DNS_API_TOKEN` +
+internet egress; no inbound), so it works whenever the uplink is up.
+
+- **`renew-cert.sh`** (new, `deploy/edge/`): runs the `goacme/lego` container with
+  `renew --days 30` against the mounted `traefik/lego/` account+cert. `lego renew` is inherently
+  opportunistic — a no-op unless within 30 days of expiry, and a clean no-op (retry next tick)
+  when offline. On an actual renewal (detected by cert-file checksum change), it copies the new
+  cert/key into `traefik/certs/` (`chmod 600` the key) and `systemctl --user restart traefik`.
+- **`systemd/cert-renew.service`** (new): `Type=oneshot`, `EnvironmentFile=…/.env` (for
+  `CLOUDFLARE_DNS_API_TOKEN`), `ExecStart=…/renew-cert.sh`.
+- **`systemd/cert-renew.timer`** (new): `OnCalendar=daily`, `Persistent=true` (catches up after
+  downtime).
+- **`install.sh`**: extend to also symlink `systemd/*.{service,timer}` into
+  `~/.config/systemd/user/` and `systemctl --user enable --now cert-renew.timer`.
+- **Linger**: confirm `loginctl enable-linger mike` so user timers (and the quadlets) fire
+  headless without an active login session.
+
+The infra-side `origin_request.no_tls_verify` already makes the **public** path robust even if a
+renewal is somehow missed; this timer keeps the **LAN/origin** cert fresh automatically.
 
 ## Apply sequence
 
@@ -152,10 +185,13 @@ TUNNEL_TOKEN=CHANGEME
    in TF state — would otherwise block the CNAME).
 3. **infra**: `just cloudflare` → plan + apply (tunnel, ingress config, CNAME).
 4. **infra**: `just tunnel-token` → copy token into `platform/deploy/edge/.env` as `TUNNEL_TOKEN`.
-5. **box**: pin/verify the cloudflared image, drop the quadlet, `install.sh`, `systemctl --user
-   daemon-reload`, `systemctl --user start cloudflared`.
+5. **box**: pin/verify the cloudflared image; set `TUNNEL_TOKEN` + `CLOUDFLARE_DNS_API_TOKEN` in
+   `.env`; `install.sh` (symlinks quadlet + renewal units); `loginctl enable-linger`;
+   `systemctl --user daemon-reload`; `systemctl --user start cloudflared`;
+   `systemctl --user enable --now cert-renew.timer`.
 6. **verify**: `cloudflared` registers 4 edge connections; `https://app.demo.trakrf.id` loads
-   off-LAN (cellular) with a valid CF cert; Live Reads/SSE reconnect-and-resume.
+   off-LAN (cellular) with a valid CF cert; Live Reads/SSE reconnect-and-resume; `cert-renew.timer`
+   is listed/active and a manual `cert-renew.service` run is a clean no-op (cert not near expiry).
 
 ## Gotchas
 
@@ -163,8 +199,9 @@ TUNNEL_TOKEN=CHANGEME
 - **SSE / Live Reads** — Cloudflare's proxy has a ~100s read timeout on long-lived connections.
   `EventSource` auto-reconnects, so the feed blips-and-resumes. Acceptable; WebSockets are an
   option if we switch later.
-- **TLS to origin** — `origin_server_name` makes `cloudflared` validate Traefik's LE cert by SNI
-  (`app.demo.trakrf.id`) rather than the internal `traefik` hostname; avoids `no_tls_verify`.
+- **TLS to origin** — the `cloudflared → traefik` leg is box-local, so it uses `no_tls_verify`,
+  decoupling the public path from LE cert expiry. The LAN/origin cert is kept fresh by the
+  `cert-renew.timer` (DNS-01, outbound-only).
 - **Edge errors until the box connects** — once the CNAME flips, the hostname returns CF error
   1016 until `cloudflared` is running on the box. Apply infra and box side together.
 
@@ -176,6 +213,8 @@ TUNNEL_TOKEN=CHANGEME
 - [ ] On-Slate-WiFi clients still resolve to `.10` (split horizon intact).
 - [ ] Live Reads / SSE works over the tunnel (reconnect behavior acceptable).
 - [ ] Stale `A → 192.168.8.10` public record removed/replaced.
+- [ ] Public path is robust to LE cert expiry (box-local leg uses `no_tls_verify`).
+- [ ] LE cert renews hands-free when the box has uplink (`cert-renew.timer` installed + enabled).
 
 ## Out of scope
 
