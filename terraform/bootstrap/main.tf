@@ -61,6 +61,9 @@ resource "cloudflare_api_token" "terraform_infrastructure" {
       # Cloudflare Pages projects (pages.tf — www, docs)
       data.cloudflare_api_token_permission_groups.all.account["Pages Read"],
       data.cloudflare_api_token_permission_groups.all.account["Pages Write"],
+      # Cloudflare Tunnel (cloudflare/demo-tunnel.tf — edge demo, TRA-957)
+      data.cloudflare_api_token_permission_groups.all.account["Cloudflare Tunnel Read"],
+      data.cloudflare_api_token_permission_groups.all.account["Cloudflare Tunnel Write"],
     ]
     resources = {
       "com.cloudflare.api.account.${var.account_id}" = "*"
