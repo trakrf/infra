@@ -101,7 +101,7 @@ envs:
     appTrakrfIdHost: app.trakrf.id
     mqttIp: ""
     mqttEnabled: false  # flip to true at prod cutover — see TRA-920 prod checklist
-    emailGuardEnabled: false  # flip to true AFTER prod RESEND_API_KEY is injected — else the PreSync guard blocks live prod syncs (TRA-972)
+    emailGuardEnabled: true  # prod RESEND_API_KEY injected 2026-06-10, so the PreSync guard passes (TRA-972)
     # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
     # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
     # the Application (immutable ref → kubelet pulls the exact build, fixing
