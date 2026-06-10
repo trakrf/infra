@@ -7,12 +7,10 @@ metadata:
 data:
   APP_ENV: {{ .Values.config.appEnv | quote }}
   ENVIRONMENT_LABEL: {{ .Values.config.environmentLabel | quote }}
-  BACKEND_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
 {{- with .Values.config.runtimeLogLevel }}
-  # LOG_LEVEL is the runtime level the Go backend logger reads (logger/config.go);
-  # BACKEND_LOG_LEVEL above is legacy and unread by the current backend. Emitted
-  # only when set, so envs that omit it (prod) keep their APP_ENV→warn default and
-  # render no LOG_LEVEL key. Set per-env via the root app (preview→info). TRA-974.
+  # LOG_LEVEL is the runtime level the Go backend logger reads (logger/config.go).
+  # Emitted only when set, so envs that omit it (prod) keep their APP_ENV→warn
+  # default and render no LOG_LEVEL key. Set per-env via the root app (preview→info).
   LOG_LEVEL: {{ . | quote }}
 {{- end }}
   SERVICE_NAME: {{ .Values.config.serviceName | quote }}
