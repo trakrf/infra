@@ -5,7 +5,7 @@
   consulted by this controller. The actual update policy for the preview
   backend lives in trakrf-backend-image-updater.yaml as an ImageUpdater CR.
 
-  GKE-only: the preview composition only lands on GKE today (AKS stopped,
+  GKE-only: the preview composition only lands on GKE today (AKS and
   EKS deprovisioned). On non-GKE clusters this Application isn't emitted,
   and no ImageUpdater CR is rendered, so manual tag bumps stay in effect
   there.
