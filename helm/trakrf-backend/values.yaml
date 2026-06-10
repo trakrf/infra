@@ -124,13 +124,10 @@ mqtt:
   # mqtts (TLS): the backend is a separate pod from the broker, reaching it over
   # the public LB hostname (Let's Encrypt cert SAN), not the ingester's loopback.
   scheme: mqtts
-  # Subscribe to read topics only (trakrf.id/{external_key}/reads), NOT the whole
-  # trakrf.id/# tree — so alarm command/status topics (trakrf.id/{key}/command,
-  # …/status; TRA-906) aren't delivered to the ingester and dropped as non-reads.
-  # `+` is single-level: every scan_devices.publish_topic is trakrf.id/{key}/reads
-  # (one key segment), so this matches all readers. Switch to $share/<group>/...
-  # when multi-replica lands (TRA-907).
-  topic: "trakrf.id/+/reads"
+  # NOTE: no `topic` here. As of TRA-922 (platform PR #475) the backend ignores
+  # MQTT_TOPIC entirely — the ingest subscriber is data-driven, subscribing to
+  # exactly the registered publish_topics ({org_slug}/.../reads) via an in-memory
+  # registry. The old trakrf.id/+/reads filter is retired.
   # Distinct base clientId (overridden per-env by the root chart). Must differ
   # from the RC ingester's clientId so the broker doesn't evict one while both
   # are connected; the subscriber also appends the pod hostname at runtime.
