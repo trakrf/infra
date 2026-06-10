@@ -43,17 +43,19 @@
 {{- end }}
 {{- $values := printf "%s%s" $base $ingress }}
 {{- /*
-  JWT_SECRET is a real, externally-set value (kubectl-managed in-cluster, not in
-  git — no ESO/sealed-secret ceremony today). The chart's secret.yaml renders the
-  placeholder default "change-me"; without this carve-out ArgoCD selfHeal reverts
-  the real secret → the backend's TRA-860/#428 fail-fast guard refuses to boot.
-  ignoreDifferences (diff) + RespectIgnoreDifferences (sync) make the operator-set
-  JWT_SECRET stick across syncs. Applies per-env, so prod inherits the carve-out
-  at cutover (its real secret must be set the same way — see TRA-375).
+  JWT_SECRET and RESEND_API_KEY are real, externally-set values (kubectl-managed
+  in-cluster, not in git — no ESO/sealed-secret ceremony today). The chart's
+  secret.yaml omits each when empty/placeholder; without this carve-out ArgoCD
+  selfHeal reverts the operator-set values on sync. For JWT that trips the
+  backend's TRA-860/#428 fail-fast boot guard; for RESEND it silently empties the
+  key so email send fails with Resend "API key is invalid" (the Railway→GKE
+  migration miss). ignoreDifferences (diff) + RespectIgnoreDifferences (sync) make
+  both stick across syncs. Applies per-env, so prod inherits the carve-out at
+  cutover (its real secrets must be set the same way — see TRA-375).
   TODO durable: replace the manual secret source with External Secrets + GCP
   Secret Manager (TRA-375 follow-up); the carve-out stays correct either way.
 */ -}}
-{{- $ignore := printf "- group: \"\"\n  kind: Secret\n  name: trakrf-backend\n  namespace: trakrf-%s\n  jsonPointers:\n    - /data/JWT_SECRET\n" $env }}
+{{- $ignore := printf "- group: \"\"\n  kind: Secret\n  name: trakrf-backend\n  namespace: trakrf-%s\n  jsonPointers:\n    - /data/JWT_SECRET\n    - /data/RESEND_API_KEY\n" $env }}
 ---
 {{- include "trakrf.application" (dict
   "name" (printf "trakrf-backend-%s" $env)
