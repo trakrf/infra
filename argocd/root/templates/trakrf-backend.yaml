@@ -21,6 +21,15 @@
 {{- if $cfg.jwtExpirationSeconds }}
 {{- $base = printf "%s  jwtExpirationSeconds: %q\n" $base $cfg.jwtExpirationSeconds }}
 {{- end }}
+{{- /* Per-env runtime log level (TRA-974). Maps to the chart's
+       config.runtimeLogLevel → LOG_LEVEL env the backend logger reads. Preview
+       pins "info" to silence the EnvDev debug default (per-message ingest
+       firehose); prod/unset envs fall back to the backend's APP_ENV default
+       (production→warn). A config sub-key, so append BEFORE the top-level
+       image:/mqtt:/emailGuard: blocks. */ -}}
+{{- if $cfg.logLevel }}
+{{- $base = printf "%s  runtimeLogLevel: %q\n" $base $cfg.logLevel }}
+{{- end }}
 {{- if $cfg.imageTag }}
 {{- $base = printf "%simage:\n  tag: %q\n" $base $cfg.imageTag }}
 {{- end }}
