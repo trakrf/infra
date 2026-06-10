@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/trakrf/infra/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/trakrf/infra/actions/workflows/ci.yml)
 
-Production-style infrastructure for the TrakRF IoT telemetry platform: MQTT ingestion, a PostgreSQL/TimescaleDB time-series store, and a Go API — deployed to managed Kubernetes (GKE active, AKS stopped, EKS deprovisioned; all three paths supported) via GitOps, observed with Prometheus and Grafana, provisioned with OpenTofu.
+Production-style infrastructure for the TrakRF IoT telemetry platform: MQTT ingestion, a PostgreSQL/TimescaleDB time-series store, and a Go API — deployed to managed Kubernetes (GKE active, AKS and EKS deprovisioned; all three paths supported) via GitOps, observed with Prometheus and Grafana, provisioned with OpenTofu.
 
 A single `cluster` flag swaps the active target. Per-cluster overlays under each Helm chart (`values-aks.yaml`, `values-gke.yaml`, …) carry the cloud-specific bits — DNS solver, load-balancer IP, workload identity — so the same workloads land cleanly on either cloud.
 
@@ -55,7 +55,7 @@ Fixed RFID readers publish MQTT over TLS to a self-hosted **Mosquitto** broker. 
 Decisions we made, and why:
 
 - **Managed Kubernetes over self-managed k8s or proprietary container runtimes** — Managed control planes eliminate an entire class of ops work. ECS/Cloud Run/ACI lock you into per-cloud primitives; k8s keeps the door open to a second (or third) cloud.
-- **Multi-cloud across EKS, AKS, and GKE** — Started on EKS, then ported to AKS and GKE to prove the workload is portable and to land where the credits are. GKE is the active cluster; AKS is stopped (resources kept, can be started back up quickly); EKS is deprovisioned (state preserved, rebuilds from `just aws`). All three remain first-class targets — useful as templates if you want to self-host this stack on a specific cloud. Cluster-specific bits live in `values-<cluster>.yaml` overlays so the same chart deploys on any of the three.
+- **Multi-cloud across EKS, AKS, and GKE** — Started on EKS, then ported to AKS and GKE to prove the workload is portable and to land where the credits are. GKE is the active cluster; AKS and EKS are deprovisioned (torn down to hold cost, rebuild from `just azure` / `just aws`; their preserved DNS zones re-import cleanly). All three remain first-class targets — useful as templates if you want to self-host this stack on a specific cloud. Cluster-specific bits live in `values-<cluster>.yaml` overlays so the same chart deploys on any of the three.
 - **App-of-apps root chart with cluster overlay** — `argocd/root/` is a thin Helm chart that emits one `Application` per workload (`cert-manager`, `traefik`, `trakrf-db`, `trakrf-backend`, `trakrf-mosquitto`, …). Tofu outputs (workload-identity client IDs, static LB IPs, DNS zone names) are injected at install time by `scripts/apply-root-app.sh <cluster>`.
 - **Traefik + cert-manager with workload-identity DNS-01** — Wildcard cert via DNS-01, federated to Azure UAI / GCP service account, no API keys at rest. Static load-balancer IP provisioned in Terraform and pinned to Traefik via the cluster overlay.
 - **CloudNativePG over CrunchyData PGO** — A community CNPG-compatible TimescaleDB image (`ghcr.io/clevyr/cloudnativepg-timescale`) made the CNPG path viable for a Timescale-backed workload, and that drove the choice. CNPG is also lighter and Kubernetes-native, and its bootstrap lets us scope role grants to a specific schema. The CrunchyData operator is more featureful but heavier than we need for a single tenant.
@@ -72,7 +72,7 @@ Decisions we made, and why:
 | `terraform/bootstrap/` | One-time Cloudflare setup: R2 state bucket, API tokens. |
 | `terraform/cloudflare/` | DNS, Pages, email, alt-domain delegation. |
 | `terraform/aws/` | VPC, EKS, ECR, IAM/IRSA, Route53 records. Currently deprovisioned to hold cost — rebuild with `just aws`. |
-| `terraform/azure/` | AKS, ACR, Azure DNS, user-assigned identities, static traefik PIP, cert-manager identity federation. AKS cluster is currently stopped to hold cost; resources retained. |
+| `terraform/azure/` | AKS, ACR, Azure DNS, user-assigned identities, static traefik PIP, cert-manager identity federation. Currently deprovisioned to hold cost — rebuild with `just azure`; the `aks.trakrf.app` zone is preserved and re-imports cleanly. |
 | `terraform/gcp/` | GKE, Cloud DNS, Artifact Registry, GSAs + Workload Identity, static traefik LB IP. Active cluster. |
 | `helm/cnpg/` | CloudNativePG operator values (per-cluster overlays). |
 | `helm/trakrf-db/` | CNPG `Cluster` for the `trakrf` namespace. |
@@ -164,7 +164,7 @@ What's demo-grade today vs. what production would need:
 Cluster economics differ enough across the three clouds that we picked the cheapest demo footprint on each, then ran only one at a time once the patterns were validated:
 
 - **GKE (active)** — single ARM (T2A) node, zonal cluster, Cloud NAT minimized, Artifact Registry, Cloud DNS managed zone. Sits comfortably inside the GCP starter credit.
-- **AKS (stopped)** — single `Standard_D4ps_v6` (Cobalt 100 ARM) on-demand node, single-zone, static PIP, ACR, Azure DNS zone. Cluster is currently stopped; the control plane and supporting resources stay in Terraform state and can be brought back up quickly. Spot burst node group is scoped but deferred.
+- **AKS (deprovisioned)** — single `Standard_D4ps_v6` (Cobalt 100 ARM) on-demand node, single-zone, static PIP, ACR, Azure DNS zone. Even stopped it ran **~$40/month** — the Standard load balancer, two static IPs, and ACR bill while the compute is halted. Torn down to hold the Azure bill at zero, but the path is intact — `just azure` rebuilds it; the `aks.trakrf.app` zone is preserved and re-imports cleanly. Spot burst node group is scoped but deferred.
 - **EKS (deprovisioned)** — single-AZ `t3.medium` node group, one NAT gateway, ECR, Route53 zone. Ran around **~$120–$160/month** with NAT as the majority. Torn down to hold the AWS bill at zero, but the path is intact — `just aws` rebuilds it; the `aws.trakrf.id` zone is preserved and re-imports cleanly.
 - **Production target** — multi-zone node pool (3 nodes, x86), CNPG on a dedicated DB node group, object-store backups, an L7 LB. Expect **~$600–$900/month** before data transfer on any of the three clouds. Long poles: egress, LB, block storage.
 
@@ -172,7 +172,7 @@ Numbers are order-of-magnitude — confirm against the relevant cloud calculator
 
 ## Status & roadmap
 
-The infrastructure foundation shipped on EKS, then ported to AKS and GKE. GKE is currently active and the candidate target for the preview-environment cutover; AKS is stopped and EKS is deprovisioned, both with their paths preserved as self-host / template baselines. Next milestones: a Kanidm-backed IdP with OIDC into ArgoCD/Grafana, External Secrets Operator, multi-AZ hardening, and Cosign verification.
+The infrastructure foundation shipped on EKS, then ported to AKS and GKE. GKE is currently active and the candidate target for the preview-environment cutover; AKS and EKS are deprovisioned, both with their paths preserved as self-host / template baselines. Next milestones: a Kanidm-backed IdP with OIDC into ArgoCD/Grafana, External Secrets Operator, multi-AZ hardening, and Cosign verification.
 
 ## Contributing & policies
 
