@@ -139,12 +139,10 @@ mqtt:
 # Non-secret config (ConfigMap)
 config:
   appEnv: production
-  logLevel: info
   # runtimeLogLevel → the LOG_LEVEL env the Go backend logger actually reads
-  # (logger/config.go). Empty = inherit the backend's APP_ENV-based default
-  # (production→warn, dev/preview→debug). Set per-env (preview→info) to pin a
-  # level. NOTE: logLevel above feeds the legacy BACKEND_LOG_LEVEL key, which the
-  # current backend does NOT read — dead-key cleanup tracked in TRA-974.
+  # (logger/config.go, bare os.Getenv — no BACKEND_ prefix scheme). Empty =
+  # inherit the backend's APP_ENV-based default (production→warn, dev/preview→
+  # debug). Set per-env (preview→info) to pin a level.
   runtimeLogLevel: ""
   serviceName: trakrf-backend
   corsOrigin: ""
