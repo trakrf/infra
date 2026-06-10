@@ -35,6 +35,11 @@ namespaces:
 #                                until cutover (see TRA-920 prod checklist). GKE-only
 #                                (broker host is .gke.); harmless if ever set on a
 #                                cluster whose backend image predates TRA-900.
+# emailGuardEnabled            — TRA-972: renders the RESEND_API_KEY PreSync guard
+#                                Job, which fails the sync loudly if the email key
+#                                is empty/missing in this env. preview=true; prod
+#                                stays false until its key is injected (an active
+#                                guard blocks live prod syncs). Default off.
 # imageTag                     — trakrf-backend image tag override. Empty falls
 #                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
 #                                On GKE BOTH envs are image-updater-tracked
@@ -80,6 +85,7 @@ envs:
     appTrakrfIdHost: app.preview.trakrf.id
     mqttIp: ""
     mqttEnabled: true
+    emailGuardEnabled: true
     imageTag: ""
     environmentLabel: preview
     jwtExpirationSeconds: "900"
@@ -95,6 +101,7 @@ envs:
     appTrakrfIdHost: app.trakrf.id
     mqttIp: ""
     mqttEnabled: false  # flip to true at prod cutover — see TRA-920 prod checklist
+    emailGuardEnabled: true  # prod RESEND_API_KEY injected 2026-06-10, so the PreSync guard passes (TRA-972)
     # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
     # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
     # the Application (immutable ref → kubelet pulls the exact build, fixing

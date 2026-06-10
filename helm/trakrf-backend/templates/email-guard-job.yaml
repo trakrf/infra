@@ -1,0 +1,96 @@
+{{- if .Values.emailGuard.enabled }}
+{{- /*
+  RESEND_API_KEY PreSync guard (TRA-972). Turns an empty/missing email key in a
+  deployed env from a silent best-effort warning (the backend logs Resend "API
+  key is invalid" but still returns 2xx, so the UI shows success and nothing is
+  delivered) into a LOUD sync failure surfaced in the ArgoCD UI before the broken
+  state goes live. Belt-and-suspenders to infra#154's omit-when-empty +
+  ignoreDifferences: this DETECTS the regression class (missed injection, deleted
+  key, botched cutover) that #154 only prevents one cause of.
+
+  pre-install,pre-upgrade => ArgoCD PreSync (same mapping as migrate-job). Runs at
+  weight -10, before migrate (-5), so a missing key fails fast before migrations
+  or pod rollout. Enabled only for deployed envs (preview/prod) via the root
+  chart; default off so local/eks/aks render nothing.
+
+  Checks PRESENCE only, not validity: a send-scoped re_... key can't be read-only
+  validated (Resend /domains => 401 restricted_api_key) and a hook must not send a
+  real email. optional:true on the secretKeyRef is load-bearing — #154 OMITS the
+  key from the Secret when empty, so a hard ref would die with an opaque
+  CreateContainerConfigError; optional yields an empty env the check catches with
+  a clear message (and also catches a present-but-empty-string key).
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "trakrf-backend.fullname" . }}-email-guard
+  labels:
+    {{- include "trakrf-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: email-guard
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "trakrf-backend.labels" . | nindent 8 }}
+        app.kubernetes.io/component: email-guard
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: email-guard
+          image: {{ .Values.emailGuard.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trakrf-backend.fullname" . }}
+                  key: RESEND_API_KEY
+                  optional: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              if [ -z "$RESEND_API_KEY" ]; then
+                echo "FATAL: RESEND_API_KEY is empty or missing in this deployed env."
+                echo "Transactional email (invites, password resets) will silently fail."
+                echo "Inject the key out-of-band (see TRA-972 / TRA-375) before syncing."
+                exit 1
+              fi
+              echo "RESEND_API_KEY present (len ${#RESEND_API_KEY}). Email guard passed."
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

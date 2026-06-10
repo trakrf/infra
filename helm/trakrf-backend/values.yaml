@@ -156,6 +156,18 @@ secrets:
   resendApiKey: ""
   sentryDsn: ""
 
+# RESEND_API_KEY PreSync guard (TRA-972). When enabled, a pre-install/pre-upgrade
+# hook Job fails the sync (loudly, in the ArgoCD UI) if RESEND_API_KEY is empty or
+# missing in this env's Secret — so a missed out-of-band injection can't silently
+# ship broken transactional email. Default off; the root chart flips it true for
+# deployed envs (preview + prod) only, so local/eks/aks render nothing.
+# Checks presence, not validity (see templates/email-guard-job.yaml). busybox is
+# pinned + multi-arch because GKE nodes are arm64 and the backend image is
+# shell-less.
+emailGuard:
+  enabled: false
+  image: busybox:1.37.0
+
 nodeSelector: {}
 tolerations: []
 affinity: {}
