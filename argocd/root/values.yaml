@@ -89,6 +89,10 @@ envs:
     imageTag: ""
     environmentLabel: preview
     jwtExpirationSeconds: "900"
+    # Preview detects as EnvDev → the backend logger defaults to debug, a 24/7
+    # per-message ingest firehose into Cloud Logging. Pin info (TRA-974); prod
+    # omits this and keeps its APP_ENV→warn default.
+    logLevel: info
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-preview
