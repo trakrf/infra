@@ -31,6 +31,12 @@
 {{- if $cfg.mqttEnabled }}
 {{- $base = printf "%smqtt:\n  host: mqtt.%s.gke.trakrf.id\n  clientId: trakrf-backend-%s-%s\n" $base $env $.Values.cluster $env }}
 {{- end }}
+{{- /* TRA-972: RESEND_API_KEY PreSync guard. Enabled per-env (preview now; prod
+       only AFTER its key is injected, or the guard blocks live prod syncs). The
+       guard image comes from the chart default (busybox). */ -}}
+{{- if $cfg.emailGuardEnabled }}
+{{- $base = printf "%semailGuard:\n  enabled: true\n" $base }}
+{{- end }}
 {{- $ingress := "ingress:\n  enabled: false\n" }}
 {{- if $cfg.ingressEnabled }}
 {{- $ingressCtx := dict
