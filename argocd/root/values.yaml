@@ -99,6 +99,14 @@ envs:
       namespace: trakrf-preview
       createRetainClass: true
       externalIp: ""
+      # Bumped 10Gi→20Gi 2026-06-20: preview's single data+WAL volume filled
+      # (CNPG "no free disk space for WALs" → Postgres refused to start →
+      # backend 0/1 → app.preview.trakrf.id served 503). Live-patched the
+      # Cluster CR + PVC to 20Gi to restore service; this reconciles git to
+      # match. Preview fills from e2e/Playwright churn (TRA ticket for periodic
+      # prune); 20Gi is headroom, not a permanent answer. Omitted on prod, which
+      # keeps the chart's 10Gi default.
+      storageSize: 20Gi
   prod:
     dbHost: trakrf-db-prod-rw.trakrf-prod
     ingressEnabled: true

@@ -22,7 +22,11 @@
 {{- $dc := $cfg.dbCluster }}
 {{- if $dc.enabled }}
 {{- $ignore := printf "- group: postgresql.cnpg.io\n  kind: Cluster\n  name: %s\n  managedFieldsManagers:\n    - manager\n" $dc.fullnameOverride }}
-{{- $values := printf "fullnameOverride: %s\nstorage:\n  createRetainClass: %t\nbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" $dc.fullnameOverride $dc.createRetainClass $.Values.cnpgBackupBucket $.Values.cnpgBackupsGcpServiceAccountEmail }}
+{{- $values := printf "fullnameOverride: %s\nstorage:\n  createRetainClass: %t\n" $dc.fullnameOverride $dc.createRetainClass }}
+{{- if $dc.storageSize }}
+{{- $values = printf "%s  size: %q\n" $values $dc.storageSize }}
+{{- end }}
+{{- $values = printf "%sbackups:\n  bucket: %q\n  gcpServiceAccountEmail: %q\n" $values $.Values.cnpgBackupBucket $.Values.cnpgBackupsGcpServiceAccountEmail }}
 {{- if and $dc.externalIp (eq $.Values.cluster "gke") }}
 {{- $values = printf "%sexternalPreview:\n  enabled: true\n  loadBalancerIP: %q\n  sourceRanges:\n    - %q\n" $values $dc.externalIp $.Values.breakglassSourceCidr }}
 {{- end }}
