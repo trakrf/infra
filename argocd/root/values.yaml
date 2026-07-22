@@ -40,6 +40,11 @@ namespaces:
 #                                is empty/missing in this env. preview=true; prod
 #                                stays false until its key is injected (an active
 #                                guard blocks live prod syncs). Default off.
+# orgCreateNotifyAddr          — TRA-1040: backend ORG_CREATE_NOTIFY_ADDR. Routes
+#                                org signup/create/delete notices to this single
+#                                address and skips the all-superadmins fan-out.
+#                                preview=one operator address; prod omits it (the
+#                                fan-out is the intended prod behavior).
 # imageTag                     — trakrf-backend image tag override. Empty falls
 #                                back to chart default (helm/trakrf-backend/values-<cluster>.yaml).
 #                                On GKE BOTH envs are image-updater-tracked
@@ -93,6 +98,10 @@ envs:
     # per-message ingest firehose into Cloud Logging. Pin info (TRA-974); prod
     # omits this and keeps its APP_ENV→warn default.
     logLevel: info
+    # TRA-1040: preview's e2e org-creation firehose notified every active
+    # superadmin. Routing all three org-lifecycle notices to one address silences
+    # the churn for everyone else. Prod omits this key → default fan-out.
+    orgCreateNotifyAddr: mike@kwyk.net
     dbCluster:
       enabled: true
       fullnameOverride: trakrf-db-preview

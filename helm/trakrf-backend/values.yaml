@@ -144,6 +144,12 @@ config:
   # inherit the backend's APP_ENV-based default (production→warn, dev/preview→
   # debug). Set per-env (preview→info) to pin a level.
   runtimeLogLevel: ""
+  # orgCreateNotifyAddr → ORG_CREATE_NOTIFY_ADDR (TRA-1040, platform PR #524).
+  # When set, all three org-lifecycle notices (self-service signup, internal
+  # create, delete) route to this single address instead of fanning out to every
+  # active superadmin. Empty = unset = default fan-out (prod's behavior). Set
+  # per-env by the root chart (preview only) to silence e2e test-org churn.
+  orgCreateNotifyAddr: ""
   serviceName: trakrf-backend
   corsOrigin: ""
   jwtExpirationSeconds: "3600"
