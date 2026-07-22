@@ -13,6 +13,12 @@ data:
   # default and render no LOG_LEVEL key. Set per-env via the root app (preview→info).
   LOG_LEVEL: {{ . | quote }}
 {{- end }}
+{{- with .Values.config.orgCreateNotifyAddr }}
+  # TRA-1040: routes org create/signup/delete notices to one operator address and
+  # skips the all-superadmins fan-out. Emitted only when set — envs that omit it
+  # (prod) render no key and keep the default fan-out.
+  ORG_CREATE_NOTIFY_ADDR: {{ . | quote }}
+{{- end }}
   SERVICE_NAME: {{ .Values.config.serviceName | quote }}
   BACKEND_CORS_ORIGIN: {{ .Values.config.corsOrigin | quote }}
   JWT_EXPIRATION: {{ .Values.config.jwtExpirationSeconds | quote }}

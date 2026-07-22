@@ -30,6 +30,13 @@
 {{- if $cfg.logLevel }}
 {{- $base = printf "%s  runtimeLogLevel: %q\n" $base $cfg.logLevel }}
 {{- end }}
+{{- /* Per-env org-lifecycle notification address (TRA-1040). Maps to the chart's
+       config.orgCreateNotifyAddr → ORG_CREATE_NOTIFY_ADDR. Preview pins one
+       operator address so e2e test-org churn stops paging every superadmin;
+       prod omits it and keeps the default fan-out. Also a config sub-key. */ -}}
+{{- if $cfg.orgCreateNotifyAddr }}
+{{- $base = printf "%s  orgCreateNotifyAddr: %q\n" $base $cfg.orgCreateNotifyAddr }}
+{{- end }}
 {{- if $cfg.imageTag }}
 {{- $base = printf "%simage:\n  tag: %q\n" $base $cfg.imageTag }}
 {{- end }}
