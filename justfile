@@ -544,7 +544,7 @@ psql ENV:
     require_env "{{ ENV }}"
     ns="trakrf-{{ ENV }}"
     pod=$(kubectl -n "$ns" get pod -l cnpg.io/instanceRole=primary \
-            -o jsonpath='{.items[0].metadata.name}')
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
     if [ -z "$pod" ]; then
         echo "ERROR: no CNPG primary found in $ns" >&2
         exit 1
