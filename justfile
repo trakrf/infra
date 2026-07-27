@@ -5,6 +5,15 @@ export TF_VAR_eks_nlb_hostname := env_var("EKS_NLB_HOSTNAME")
 
 r2_endpoint := "https://" + env_var("CLOUDFLARE_ACCOUNT_ID") + ".r2.cloudflarestorage.com"
 
+# GKE ops coordinates — deliberately literal. `gke-creds` used to derive these
+# from `tofu -chdir=terraform/gcp output`, which puts R2 state between an
+# operator and prod during an incident. If the cluster is ever rebuilt,
+# re-derive with `tofu -chdir=terraform/gcp output` and update these three.
+gcp_project := "trakrf-494211"
+gcp_zone    := "us-central1-a"
+gke_cluster := "gke-trakrf-demo-usc1"
+gke_context := "gke_" + gcp_project + "_" + gcp_zone + "_" + gke_cluster
+
 default: list
 
 # List available recipes
@@ -98,13 +107,36 @@ aks-creds:
      kubelogin convert-kubeconfig -l azurecli && \
      kubectl config use-context $CLUSTER
 
-# Fetch GKE kubeconfig via gcloud. Requires gke-gcloud-auth-plugin.
+# Authenticate to GCP and point kubectl at the GKE cluster — zero to ready.
+#
+# Uses the browserless flow: it prints a URL, you open it anywhere (phone,
+# laptop, any browser), and paste the verification code back at the prompt.
+# `--update-adc` refreshes Application Default Credentials in the same step,
+# so no separate `gcloud auth application-default login` is needed.
+#
+# Skips re-authentication if credentials are already valid; FORCE=1 overrides.
+gcp-auth:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${FORCE:-0}" != "1" ] \
+       && gcloud auth print-access-token >/dev/null 2>&1 \
+       && [ -f "$HOME/.config/gcloud/application_default_credentials.json" ]; then
+        echo "✅ Already authenticated as $(gcloud config get-value account 2>/dev/null), ADC present."
+        echo "   Re-run with FORCE=1 to re-authenticate."
+    else
+        gcloud auth login --no-launch-browser --update-adc
+    fi
+    gcloud container clusters get-credentials {{ gke_cluster }} \
+        --zone {{ gcp_zone }} --project {{ gcp_project }}
+    kubectl config use-context {{ gke_context }}
+    echo "✅ kubectl context: {{ gke_context }}"
+
+# Point kubectl at the GKE cluster using the coordinates above (no tofu, no R2).
+# Assumes you are already authenticated — run `just gcp-auth` if not.
 gke-creds:
-    @PROJECT=$(tofu -chdir=terraform/gcp output -raw project_id) && \
-     CLUSTER=$(tofu -chdir=terraform/gcp output -raw cluster_name) && \
-     ZONE=$(tofu -chdir=terraform/gcp output -raw zone) && \
-     gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT && \
-     kubectl config use-context gke_${PROJECT}_${ZONE}_${CLUSTER}
+    @gcloud container clusters get-credentials {{ gke_cluster }} \
+        --zone {{ gcp_zone }} --project {{ gcp_project }}
+    @kubectl config use-context {{ gke_context }}
 
 # Install CNPG operator (direct helm — stays out of ArgoCD, CRD chicken-and-egg)
 cnpg-bootstrap CLUSTER:
@@ -273,7 +305,8 @@ prometheus-ui:
 # Restore proof: pull the latest pg_dump for ENV from GCS, restore it
 # into a scratch database on the live CNPG cluster, run a sanity query,
 # drop the scratch database. Requires:
-#   - `gcloud auth application-default login` (for `gcloud storage`)
+#   - `just gcp-auth` (logs in and refreshes ADC in one step — `gcloud storage`
+#     needs ADC, which `gcloud auth login --update-adc` already provides)
 #   - kubectl context pointed at the GKE cluster
 #
 # Usage:
