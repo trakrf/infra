@@ -564,6 +564,39 @@ db-status ENV:
     echo
     kubectl -n "$ns" get pods -l "cnpg.io/cluster=trakrf-db-{{ ENV }}" -o wide
 
+# All pods in an environment, wide.
+#   just pods prod
+pods ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    kubectl -n "trakrf-{{ ENV }}" get pods -o wide
+
+# Follow backend logs. SINCE defaults to 10m.
+#   just logs prod
+#   just logs prod 1h
+logs ENV SINCE="10m":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    kubectl -n "trakrf-{{ ENV }}" logs -l app.kubernetes.io/name=trakrf-backend \
+        --since={{ SINCE }} --tail=200 -f
+
+# Backend rollout status plus recent revision history.
+#   just rollout prod
+rollout ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=30s
+    echo
+    kubectl -n "$ns" get deploy trakrf-backend \
+        -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:'.spec.template.spec.containers[0].image'
+
 # ============================================================================
 # Worktree Support
 # ============================================================================
