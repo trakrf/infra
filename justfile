@@ -581,8 +581,9 @@ logs ENV SINCE="10m":
     set -euo pipefail
     source scripts/ops-lib.sh
     require_env "{{ ENV }}"
+    SINCE="{{ SINCE }}"
     kubectl -n "trakrf-{{ ENV }}" logs -l app.kubernetes.io/name=trakrf-backend \
-        --since={{ SINCE }} --tail=200 -f
+        --since="$SINCE" --tail=200 -f
 
 # Backend rollout status plus recent revision history.
 #   just rollout prod
@@ -592,7 +593,7 @@ rollout ENV:
     source scripts/ops-lib.sh
     require_env "{{ ENV }}"
     ns="trakrf-{{ ENV }}"
-    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=30s
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=30s || true
     echo
     kubectl -n "$ns" get deploy trakrf-backend \
         -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:'.spec.template.spec.containers[0].image'
