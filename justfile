@@ -307,6 +307,30 @@ argocd-ui:
     @echo "ArgoCD UI at https://<host-ip>:8080 (admin / <just argocd-password>)"
     @kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
 
+# Sync + health for every ArgoCD Application.
+argo-status:
+    @kubectl get applications -n argocd \
+        -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:'.status.sync.revision'
+
+# Request a sync of one ArgoCD Application. Prompts for any *-prod app.
+# The argocd CLI is not installed here; this patches the Application's
+# operation field, which is what the CLI does under the hood.
+#   just argo-sync trakrf-backend-preview
+argo-sync APP:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    if ! kubectl -n argocd get application "{{ APP }}" >/dev/null 2>&1; then
+        echo "ERROR: no ArgoCD Application named '{{ APP }}' — see: just argo-status" >&2
+        exit 1
+    fi
+    case "{{ APP }}" in
+        *-prod) confirm_prod prod "argocd sync {{ APP }}" ;;
+    esac
+    kubectl -n argocd patch application "{{ APP }}" --type merge \
+        -p '{"operation":{"initiatedBy":{"username":"just-argo-sync"},"sync":{"revision":"HEAD"}}}'
+    echo "→ sync requested; watch with: just argo-status"
+
 # Install kube-prometheus-stack into monitoring namespace (direct helm, not ArgoCD)
 monitoring-bootstrap CLUSTER:
     @echo "Adding prometheus-community Helm repo..."
