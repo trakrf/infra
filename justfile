@@ -598,6 +598,44 @@ rollout ENV:
     kubectl -n "$ns" get deploy trakrf-backend \
         -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:'.spec.template.spec.containers[0].image'
 
+# Restart the backend deployment. Prompts before touching prod.
+#   just backend-restart preview
+#   YES=1 just backend-restart prod
+backend-restart ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    confirm_prod "{{ ENV }}" "rollout restart deploy/trakrf-backend"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" rollout restart deploy/trakrf-backend
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=120s || true
+
+# Override the backend log level on the live deployment.
+#
+# EPHEMERAL: LOG_LEVEL is rendered into a ConfigMap by the trakrf-backend
+# chart from `config.runtimeLogLevel` and is managed by ArgoCD, so the next
+# sync reverts this. For a durable change, edit the per-env inlineValues in
+# argocd/root/templates/ and re-run scripts/apply-root-app.sh gke.
+#
+#   just set-log-level preview debug
+set-log-level ENV LEVEL:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    case "{{ LEVEL }}" in
+        debug|info|warn|error) ;;
+        *) echo "ERROR: LEVEL must be debug|info|warn|error, got '{{ LEVEL }}'" >&2; exit 1 ;;
+    esac
+    confirm_prod "{{ ENV }}" "set LOG_LEVEL={{ LEVEL }} on deploy/trakrf-backend"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" set env deploy/trakrf-backend LOG_LEVEL={{ LEVEL }}
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=120s || true
+    echo
+    echo "⚠️  EPHEMERAL — ArgoCD will revert this on the next sync of trakrf-backend-{{ ENV }}."
+    echo "   Durable path: argocd/root/templates/ inlineValues + scripts/apply-root-app.sh gke"
+
 # ============================================================================
 # Worktree Support
 # ============================================================================
