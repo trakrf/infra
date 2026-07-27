@@ -131,6 +131,52 @@ gcp-auth:
     kubectl config use-context {{ gke_context }}
     echo "✅ kubectl context: {{ gke_context }}"
 
+# Preflight: is this machine ready to operate the cluster? Detect-only —
+# never authenticates, never mutates. Prints the fix for anything it finds.
+ops-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    rc=0
+
+    acct=$(gcloud config get-value account 2>/dev/null || true)
+    if [ -n "$acct" ] && gcloud auth print-access-token >/dev/null 2>&1; then
+        echo "✅ gcloud authenticated as $acct"
+    else
+        echo "❌ gcloud not authenticated  → run: just gcp-auth"
+        rc=1
+    fi
+
+    if [ -f "$HOME/.config/gcloud/application_default_credentials.json" ]; then
+        echo "✅ ADC present"
+    else
+        echo "❌ ADC missing               → run: just gcp-auth"
+        rc=1
+    fi
+
+    ctx=$(kubectl config current-context 2>/dev/null || true)
+    if [ "$ctx" = "{{ gke_context }}" ]; then
+        echo "✅ kubectl context {{ gke_context }}"
+    else
+        echo "❌ kubectl context is '${ctx:-<none>}' → run: just gcp-auth"
+        rc=1
+    fi
+
+    for ns in trakrf-preview trakrf-prod; do
+        reachable=0
+        for _ in 1 2 3; do
+            if kubectl get ns "$ns" >/dev/null 2>&1; then reachable=1; break; fi
+            sleep 2
+        done
+        if [ "$reachable" = "1" ]; then
+            echo "✅ namespace $ns reachable"
+        else
+            echo "❌ namespace $ns unreachable after 3 tries → see docs/ops.md (Troubleshooting)"
+            rc=1
+        fi
+    done
+
+    exit $rc
+
 # Point kubectl at the GKE cluster using the coordinates above (no tofu, no R2).
 # Assumes you are already authenticated — run `just gcp-auth` if not.
 gke-creds:
