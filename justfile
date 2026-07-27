@@ -534,6 +534,36 @@ db-restore-pitr-test TARGET_TIME="":
     kubectl -n "$ns" delete cluster "$scratch" --wait=true
     echo "PITR restore proof complete."
 
+# Interactive psql on the CNPG primary. Superuser via in-pod peer auth.
+#   just psql preview
+#   just psql prod
+psql ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    pod=$(kubectl -n "$ns" get pod -l cnpg.io/instanceRole=primary \
+            -o jsonpath='{.items[0].metadata.name}')
+    if [ -z "$pod" ]; then
+        echo "ERROR: no CNPG primary found in $ns" >&2
+        exit 1
+    fi
+    echo "→ $ns/$pod (database: trakrf)"
+    kubectl -n "$ns" exec -it "$pod" -c postgres -- psql -U postgres -d trakrf
+
+# CNPG cluster health plus its instance pods.
+#   just db-status prod
+db-status ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" get cluster "trakrf-db-{{ ENV }}"
+    echo
+    kubectl -n "$ns" get pods -l "cnpg.io/cluster=trakrf-db-{{ ENV }}" -o wide
+
 # ============================================================================
 # Worktree Support
 # ============================================================================
