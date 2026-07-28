@@ -1,9 +1,22 @@
-export TF_VAR_account_id := env_var("CLOUDFLARE_ACCOUNT_ID")
-export TF_VAR_bucket_name := env_var("CLOUDFLARE_TF_STATE_BUCKET")
-export TF_VAR_domain_name := env_var("DOMAIN_NAME")
-export TF_VAR_eks_nlb_hostname := env_var("EKS_NLB_HOSTNAME")
+# env_var_or_default (not env_var): these must NOT hard-fail just to load the
+# justfile. Recipes that actually need them call require_tf_env (see
+# scripts/ops-lib.sh) for a clear error instead of a raw `env_var` failure or
+# tofu running against an empty TF_VAR_*. See docs/ops.md and TRA-1037 C1.
+export TF_VAR_account_id := env_var_or_default("CLOUDFLARE_ACCOUNT_ID", "")
+export TF_VAR_bucket_name := env_var_or_default("CLOUDFLARE_TF_STATE_BUCKET", "")
+export TF_VAR_domain_name := env_var_or_default("DOMAIN_NAME", "")
+export TF_VAR_eks_nlb_hostname := env_var_or_default("EKS_NLB_HOSTNAME", "")
 
-r2_endpoint := "https://" + env_var("CLOUDFLARE_ACCOUNT_ID") + ".r2.cloudflarestorage.com"
+r2_endpoint := "https://" + env_var_or_default("CLOUDFLARE_ACCOUNT_ID", "") + ".r2.cloudflarestorage.com"
+
+# GKE ops coordinates — deliberately literal. `gke-creds` used to derive these
+# from `tofu -chdir=terraform/gcp output`, which puts R2 state between an
+# operator and prod during an incident. If the cluster is ever rebuilt,
+# re-derive with `tofu -chdir=terraform/gcp output` and update these three.
+gcp_project := "trakrf-494211"
+gcp_zone    := "us-central1-a"
+gke_cluster := "gke-trakrf-demo-usc1"
+gke_context := "gke_" + gcp_project + "_" + gcp_zone + "_" + gke_cluster
 
 default: list
 
@@ -17,15 +30,23 @@ env:
 
 # Generate backend.conf for S3/R2 endpoint (gitignored, never committed)
 _backend-conf dir:
-    @printf 'endpoints = { s3 = "%s" }\nprofile = "cloudflare-r2"\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    printf 'endpoints = { s3 = "%s" }\nprofile = "cloudflare-r2"\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
 
 # One-time setup: create R2 state bucket and API tokens
 bootstrap:
-    @echo "Bootstrapping cloudflare resources on ${DOMAIN_NAME}"
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap init
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap plan -out=tfplan
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap apply tfplan | grep -v '<sensitive>'
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap output -show-sensitive | grep -E '(secret|infra)'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    echo "Bootstrapping cloudflare resources on ${DOMAIN_NAME}"
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap init
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap plan -out=tfplan
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap apply tfplan | grep -v '<sensitive>'
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap output -show-sensitive | grep -E '(secret|infra)'
 
 # Plan and apply Cloudflare DNS and Pages resources
 cloudflare: (_backend-conf "terraform/cloudflare")
@@ -42,6 +63,8 @@ cloudflare: (_backend-conf "terraform/cloudflare")
 origin-cert-secret:
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     tofu -chdir=terraform/cloudflare output -raw origin_ca_cert_pem > "$tmp/tls.crt"
@@ -63,7 +86,11 @@ origin-cert-secret:
 # Print the edge demo Cloudflare Tunnel token (TRA-957). Pipe into the box's
 # platform/deploy/edge/.env as TUNNEL_TOKEN. Sensitive — don't commit/log.
 tunnel-token:
-    @tofu -chdir=terraform/cloudflare output -raw demo_tunnel_token
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    tofu -chdir=terraform/cloudflare output -raw demo_tunnel_token
 
 # Plan and apply AWS infrastructure (Route53, EKS)
 aws: (_backend-conf "terraform/aws")
@@ -88,23 +115,100 @@ gcp: (_backend-conf "terraform/gcp")
 
 # List objects in the R2 terraform state bucket
 s3-ls:
-    @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
 
 # Fetch AKS kubeconfig via az CLI, convert to azurecli auth (needs kubelogin)
 aks-creds:
-    @RG=$(tofu -chdir=terraform/azure output -raw resource_group_name) && \
-     CLUSTER=$(tofu -chdir=terraform/azure output -raw cluster_name) && \
-     az aks get-credentials --resource-group $RG --name $CLUSTER --overwrite-existing && \
-     kubelogin convert-kubeconfig -l azurecli && \
-     kubectl config use-context $CLUSTER
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    RG=$(tofu -chdir=terraform/azure output -raw resource_group_name)
+    CLUSTER=$(tofu -chdir=terraform/azure output -raw cluster_name)
+    az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
+    kubelogin convert-kubeconfig -l azurecli
+    kubectl config use-context "$CLUSTER"
 
-# Fetch GKE kubeconfig via gcloud. Requires gke-gcloud-auth-plugin.
+# Authenticate to GCP and point kubectl at the GKE cluster — zero to ready.
+#
+# Uses the browserless flow: it prints a URL, you open it anywhere (phone,
+# laptop, any browser), and paste the verification code back at the prompt.
+# `--update-adc` refreshes Application Default Credentials in the same step,
+# so no separate `gcloud auth application-default login` is needed.
+#
+# Skips re-authentication if credentials are already valid; FORCE=1 overrides.
+gcp-auth:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${FORCE:-0}" != "1" ] \
+       && gcloud auth print-access-token >/dev/null 2>&1 \
+       && [ -f "$HOME/.config/gcloud/application_default_credentials.json" ]; then
+        echo "✅ Already authenticated as $(gcloud config get-value account 2>/dev/null), ADC present."
+        echo "   Re-run with FORCE=1 to re-authenticate."
+    else
+        gcloud auth login --no-launch-browser --update-adc
+    fi
+    gcloud container clusters get-credentials {{ gke_cluster }} \
+        --zone {{ gcp_zone }} --project {{ gcp_project }}
+    kubectl config use-context {{ gke_context }}
+    echo "✅ kubectl context: {{ gke_context }}"
+
+# Preflight: is this machine ready to operate the cluster? Detect-only —
+# never authenticates, never mutates. Prints the fix for anything it finds.
+ops-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    rc=0
+
+    acct=$(gcloud config get-value account 2>/dev/null || true)
+    if [ -n "$acct" ] && gcloud auth print-access-token >/dev/null 2>&1; then
+        echo "✅ gcloud authenticated as $acct"
+    else
+        echo "❌ gcloud not authenticated  → run: just gcp-auth"
+        rc=1
+    fi
+
+    if [ -f "$HOME/.config/gcloud/application_default_credentials.json" ]; then
+        echo "✅ ADC present"
+    else
+        echo "❌ ADC missing               → run: just gcp-auth"
+        rc=1
+    fi
+
+    ctx=$(kubectl config current-context 2>/dev/null || true)
+    if [ "$ctx" = "{{ gke_context }}" ]; then
+        echo "✅ kubectl context {{ gke_context }}"
+    else
+        echo "❌ kubectl context is '${ctx:-<none>}' → run: just gcp-auth"
+        rc=1
+    fi
+
+    for ns in trakrf-preview trakrf-prod; do
+        reachable=0
+        for _ in 1 2 3; do
+            if kubectl get ns "$ns" >/dev/null 2>&1; then reachable=1; break; fi
+            sleep 2
+        done
+        if [ "$reachable" = "1" ]; then
+            echo "✅ namespace $ns reachable"
+        else
+            echo "❌ namespace $ns unreachable after 3 tries → see docs/ops.md (Troubleshooting)"
+            rc=1
+        fi
+    done
+
+    exit $rc
+
+# Point kubectl at the GKE cluster using the coordinates above (no tofu, no R2).
+# Assumes you are already authenticated — run `just gcp-auth` if not.
 gke-creds:
-    @PROJECT=$(tofu -chdir=terraform/gcp output -raw project_id) && \
-     CLUSTER=$(tofu -chdir=terraform/gcp output -raw cluster_name) && \
-     ZONE=$(tofu -chdir=terraform/gcp output -raw zone) && \
-     gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT && \
-     kubectl config use-context gke_${PROJECT}_${ZONE}_${CLUSTER}
+    @gcloud container clusters get-credentials {{ gke_cluster }} \
+        --zone {{ gcp_zone }} --project {{ gcp_project }}
+    @kubectl config use-context {{ gke_context }}
 
 # Install CNPG operator (direct helm — stays out of ArgoCD, CRD chicken-and-egg)
 cnpg-bootstrap CLUSTER:
@@ -229,6 +333,34 @@ argocd-ui:
     @echo "ArgoCD UI at https://<host-ip>:8080 (admin / <just argocd-password>)"
     @kubectl port-forward svc/argocd-server -n argocd 8080:443 --address 0.0.0.0
 
+# Sync + health for every ArgoCD Application.
+argo-status:
+    @kubectl get applications -n argocd \
+        -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:'.status.sync.revision'
+
+# Request a sync of one ArgoCD Application. Prompts for everything except
+# *-preview apps: *-prod apps AND the cluster-scoped apps (traefik,
+# cert-manager, argocd, ...) that carry production traffic for both
+# environments despite not being named *-prod.
+# The argocd CLI is not installed here; this patches the Application's
+# operation field, which is what the CLI does under the hood.
+#   just argo-sync trakrf-backend-preview
+argo-sync APP:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    if ! kubectl -n argocd get application "{{ APP }}" >/dev/null 2>&1; then
+        echo "ERROR: no ArgoCD Application named '{{ APP }}' — see: just argo-status" >&2
+        exit 1
+    fi
+    case "{{ APP }}" in
+        *-preview) ;;
+        *) confirm_prod prod "argocd sync {{ APP }}" ;;
+    esac
+    kubectl -n argocd patch application "{{ APP }}" --type merge \
+        -p '{"operation":{"initiatedBy":{"username":"just-argo-sync"},"sync":{"revision":"HEAD"}}}'
+    echo "→ sync requested; watch with: just argo-status"
+
 # Install kube-prometheus-stack into monitoring namespace (direct helm, not ArgoCD)
 monitoring-bootstrap CLUSTER:
     @echo "Adding prometheus-community Helm repo..."
@@ -273,7 +405,8 @@ prometheus-ui:
 # Restore proof: pull the latest pg_dump for ENV from GCS, restore it
 # into a scratch database on the live CNPG cluster, run a sanity query,
 # drop the scratch database. Requires:
-#   - `gcloud auth application-default login` (for `gcloud storage`)
+#   - `just gcp-auth` (logs in and refreshes ADC in one step — `gcloud storage`
+#     needs ADC, which `gcloud auth login --update-adc` already provides)
 #   - kubectl context pointed at the GKE cluster
 #
 # Usage:
@@ -282,6 +415,8 @@ prometheus-ui:
 db-restore-test ENV="preview":
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
     bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
     echo "Looking for latest dump in gs://${bucket}/{{ ENV }}/..."
     latest=$(gcloud storage ls "gs://${bucket}/{{ ENV }}/**/*.pgdump" | sort | tail -1)
@@ -378,6 +513,8 @@ db-pitr-trigger-base:
 db-restore-pitr-test TARGET_TIME="":
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
     bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
     gsa=$(tofu -chdir=terraform/gcp output -raw cnpg_backups_service_account_email)
     scratch=trakrf-restore-test
@@ -454,6 +591,136 @@ db-restore-pitr-test TARGET_TIME="":
     echo "Tearing down scratch cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --wait=true
     echo "PITR restore proof complete."
+
+# Interactive psql on the CNPG primary. Superuser via in-pod peer auth.
+#   just psql preview
+#   just psql prod
+psql ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    pod=$(kubectl -n "$ns" get pod -l cnpg.io/instanceRole=primary \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [ -z "$pod" ]; then
+        echo "ERROR: no CNPG primary found in $ns" >&2
+        exit 1
+    fi
+    echo "→ $ns/$pod (database: trakrf)"
+    kubectl -n "$ns" exec -it "$pod" -c postgres -- psql -U postgres -d trakrf
+
+# CNPG cluster health plus its instance pods.
+#   just db-status prod
+db-status ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" get cluster "trakrf-db-{{ ENV }}"
+    echo
+    kubectl -n "$ns" get pods -l "cnpg.io/cluster=trakrf-db-{{ ENV }}" -o wide
+
+# All pods in an environment, wide.
+#   just pods prod
+pods ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    kubectl -n "trakrf-{{ ENV }}" get pods -o wide
+
+# Follow backend logs. SINCE defaults to 10m.
+#   just logs prod
+#   just logs prod 1h
+logs ENV SINCE="10m":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    SINCE="{{ SINCE }}"
+    kubectl -n "trakrf-{{ ENV }}" logs -l app.kubernetes.io/name=trakrf-backend \
+        --since="$SINCE" --tail=200 -f
+
+# Backend rollout status plus recent revision history.
+#   just rollout prod
+rollout ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=30s || true
+    echo
+    kubectl -n "$ns" get deploy trakrf-backend \
+        -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,IMAGE:'.spec.template.spec.containers[0].image'
+
+# Restart the backend deployment. Prompts before touching prod.
+#   just backend-restart preview
+#   YES=1 just backend-restart prod
+backend-restart ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    confirm_prod "{{ ENV }}" "rollout restart deploy/trakrf-backend"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" rollout restart deploy/trakrf-backend
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=120s || true
+
+# Override the backend log level on the live deployment.
+#
+# EPHEMERAL: LOG_LEVEL is rendered into a ConfigMap by the trakrf-backend
+# chart from `config.runtimeLogLevel` and is managed by ArgoCD, so the next
+# sync reverts this. For a durable change, edit the per-env inlineValues in
+# argocd/root/templates/ and re-run scripts/apply-root-app.sh gke.
+#
+#   just set-log-level preview debug
+set-log-level ENV LEVEL:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    case "{{ LEVEL }}" in
+        debug|info|warn|error) ;;
+        *) echo "ERROR: LEVEL must be debug|info|warn|error, got '{{ LEVEL }}'" >&2; exit 1 ;;
+    esac
+    confirm_prod "{{ ENV }}" "set LOG_LEVEL={{ LEVEL }} on deploy/trakrf-backend"
+    ns="trakrf-{{ ENV }}"
+    kubectl -n "$ns" set env deploy/trakrf-backend LOG_LEVEL={{ LEVEL }}
+    kubectl -n "$ns" rollout status deploy/trakrf-backend --timeout=120s || true
+    echo
+    echo "⚠️  EPHEMERAL — ArgoCD will revert this on the next sync of trakrf-backend-{{ ENV }}."
+    echo "   Durable path: argocd/root/templates/ inlineValues + scripts/apply-root-app.sh gke"
+
+# Follow broker logs.
+#   just mqtt-logs prod
+mqtt-logs ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    kubectl -n "trakrf-{{ ENV }}" logs -l app.kubernetes.io/name=trakrf-mosquitto \
+        -c mosquitto --tail=100 -f
+
+# Subscribe to a topic from inside the broker pod (loopback listener, no TLS
+# setup needed). Credentials are read live from the trakrf-mosquitto-auth
+# Secret, not from the environment. Ctrl-C to stop.
+#   just mqtt-sub preview '#'
+#   just mqtt-sub prod 'trakrf.id/+/tag_scan'
+mqtt-sub ENV TOPIC:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    topic='{{ TOPIC }}'
+    user=$(kubectl -n "$ns" get secret trakrf-mosquitto-auth -o jsonpath='{.data.username}' | base64 -d)
+    pass=$(kubectl -n "$ns" get secret trakrf-mosquitto-auth -o jsonpath='{.data.password}' | base64 -d)
+    echo "→ $ns broker, user $user, topic $topic (Ctrl-C to stop)"
+    kubectl -n "$ns" exec -i deploy/trakrf-mosquitto -c mosquitto -- \
+        mosquitto_sub -h 127.0.0.1 -p 1883 -u "$user" -P "$pass" -t "$topic" -v
 
 # ============================================================================
 # Worktree Support
