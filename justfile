@@ -1,9 +1,13 @@
-export TF_VAR_account_id := env_var("CLOUDFLARE_ACCOUNT_ID")
-export TF_VAR_bucket_name := env_var("CLOUDFLARE_TF_STATE_BUCKET")
-export TF_VAR_domain_name := env_var("DOMAIN_NAME")
-export TF_VAR_eks_nlb_hostname := env_var("EKS_NLB_HOSTNAME")
+# env_var_or_default (not env_var): these must NOT hard-fail just to load the
+# justfile. Recipes that actually need them call require_tf_env (see
+# scripts/ops-lib.sh) for a clear error instead of a raw `env_var` failure or
+# tofu running against an empty TF_VAR_*. See docs/ops.md and TRA-1037 C1.
+export TF_VAR_account_id := env_var_or_default("CLOUDFLARE_ACCOUNT_ID", "")
+export TF_VAR_bucket_name := env_var_or_default("CLOUDFLARE_TF_STATE_BUCKET", "")
+export TF_VAR_domain_name := env_var_or_default("DOMAIN_NAME", "")
+export TF_VAR_eks_nlb_hostname := env_var_or_default("EKS_NLB_HOSTNAME", "")
 
-r2_endpoint := "https://" + env_var("CLOUDFLARE_ACCOUNT_ID") + ".r2.cloudflarestorage.com"
+r2_endpoint := "https://" + env_var_or_default("CLOUDFLARE_ACCOUNT_ID", "") + ".r2.cloudflarestorage.com"
 
 # GKE ops coordinates — deliberately literal. `gke-creds` used to derive these
 # from `tofu -chdir=terraform/gcp output`, which puts R2 state between an
@@ -26,15 +30,23 @@ env:
 
 # Generate backend.conf for S3/R2 endpoint (gitignored, never committed)
 _backend-conf dir:
-    @printf 'endpoints = { s3 = "%s" }\nprofile = "cloudflare-r2"\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    printf 'endpoints = { s3 = "%s" }\nprofile = "cloudflare-r2"\n' "{{r2_endpoint}}" > {{dir}}/backend.conf
 
 # One-time setup: create R2 state bucket and API tokens
 bootstrap:
-    @echo "Bootstrapping cloudflare resources on ${DOMAIN_NAME}"
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap init
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap plan -out=tfplan
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap apply tfplan | grep -v '<sensitive>'
-    @CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap output -show-sensitive | grep -E '(secret|infra)'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    echo "Bootstrapping cloudflare resources on ${DOMAIN_NAME}"
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap init
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap plan -out=tfplan
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap apply tfplan | grep -v '<sensitive>'
+    CLOUDFLARE_API_TOKEN=$CLOUDFLARE_BOOTSTRAP_API_TOKEN tofu -chdir=terraform/bootstrap output -show-sensitive | grep -E '(secret|infra)'
 
 # Plan and apply Cloudflare DNS and Pages resources
 cloudflare: (_backend-conf "terraform/cloudflare")
@@ -51,6 +63,8 @@ cloudflare: (_backend-conf "terraform/cloudflare")
 origin-cert-secret:
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     tofu -chdir=terraform/cloudflare output -raw origin_ca_cert_pem > "$tmp/tls.crt"
@@ -72,7 +86,11 @@ origin-cert-secret:
 # Print the edge demo Cloudflare Tunnel token (TRA-957). Pipe into the box's
 # platform/deploy/edge/.env as TUNNEL_TOKEN. Sensitive — don't commit/log.
 tunnel-token:
-    @tofu -chdir=terraform/cloudflare output -raw demo_tunnel_token
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    tofu -chdir=terraform/cloudflare output -raw demo_tunnel_token
 
 # Plan and apply AWS infrastructure (Route53, EKS)
 aws: (_backend-conf "terraform/aws")
@@ -97,15 +115,23 @@ gcp: (_backend-conf "terraform/gcp")
 
 # List objects in the R2 terraform state bucket
 s3-ls:
-    @aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    aws s3 ls s3://tf-state --endpoint-url "{{r2_endpoint}}" --profile cloudflare-r2
 
 # Fetch AKS kubeconfig via az CLI, convert to azurecli auth (needs kubelogin)
 aks-creds:
-    @RG=$(tofu -chdir=terraform/azure output -raw resource_group_name) && \
-     CLUSTER=$(tofu -chdir=terraform/azure output -raw cluster_name) && \
-     az aks get-credentials --resource-group $RG --name $CLUSTER --overwrite-existing && \
-     kubelogin convert-kubeconfig -l azurecli && \
-     kubectl config use-context $CLUSTER
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
+    RG=$(tofu -chdir=terraform/azure output -raw resource_group_name)
+    CLUSTER=$(tofu -chdir=terraform/azure output -raw cluster_name)
+    az aks get-credentials --resource-group "$RG" --name "$CLUSTER" --overwrite-existing
+    kubelogin convert-kubeconfig -l azurecli
+    kubectl config use-context "$CLUSTER"
 
 # Authenticate to GCP and point kubectl at the GKE cluster — zero to ready.
 #
@@ -385,6 +411,8 @@ prometheus-ui:
 db-restore-test ENV="preview":
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
     bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
     echo "Looking for latest dump in gs://${bucket}/{{ ENV }}/..."
     latest=$(gcloud storage ls "gs://${bucket}/{{ ENV }}/**/*.pgdump" | sort | tail -1)
@@ -481,6 +509,8 @@ db-pitr-trigger-base:
 db-restore-pitr-test TARGET_TIME="":
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_tf_env
     bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
     gsa=$(tofu -chdir=terraform/gcp output -raw cnpg_backups_service_account_email)
     scratch=trakrf-restore-test

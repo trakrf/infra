@@ -112,19 +112,38 @@ like. `<env>` is `preview` or `prod`.
 1. **`just pods <env>`** — is anything not `Running` or `Completed`?
    `CrashLoopBackOff`, `ImagePullBackOff`, `Pending`, or a restart count
    climbing between two runs is your lead.
-2. **`just logs <env>`** — errors in the last 10 minutes? This follows, so
+2. **If a pod is not `Running`, don't go straight to `just logs`.**
+   `kubectl logs -f` (what `just logs` runs) streams the *current*
+   container — for `CrashLoopBackOff` that container is empty because the
+   crash already happened, and for `Pending` / `ImagePullBackOff` there is
+   no container yet to stream from. Reach for these instead:
+
+   ```sh
+   kubectl -n trakrf-<env> describe pod <pod>
+   kubectl -n trakrf-<env> logs <pod> --previous
+   kubectl -n trakrf-<env> get events --sort-by=.lastTimestamp | tail -20
+   ```
+
+   - `describe pod` — for `Pending` / `ImagePullBackOff`; the cause is in
+     the `Events` section at the bottom, not the top of the output.
+   - `logs --previous` — for `CrashLoopBackOff`; the crash you care about
+     is in the container that already died, not the one that just
+     restarted.
+   - `get events` — for cluster-level causes (eviction, node pressure,
+     OOM-killed) that never show up in the pod's own logs at all.
+3. **`just logs <env>`** — errors in the last 10 minutes? This follows, so
    Ctrl-C when you have seen enough. `just logs <env> '1h'` widens the
    window.
-3. **`just db-status <env>`** — the CNPG cluster should read
+4. **`just db-status <env>`** — the CNPG cluster should read
    `Cluster in healthy state` with its instance pods `Running`. Anything
    else (`Failover in progress`, `Setting up primary`, 0 ready) means the
    database is the problem, not the app.
-4. **`just argo-status`** — is the env's app `Synced` / `Healthy`? A
+5. **`just argo-status`** — is the env's app `Synced` / `Healthy`? A
    `Degraded` or long-`OutOfSync` app means the desired state never landed.
    The `argocd` application itself showing `OutOfSync` is cosmetic and
    expected — it is self-managed after a helm bootstrap and never
    reconciles. `Healthy` is what matters there.
-5. **`just mqtt-logs <env>`** — only if the symptom is ingestion-related
+6. **`just mqtt-logs <env>`** — only if the symptom is ingestion-related
    (missing scans, silent readers).
 
 ## 4. Environments
@@ -138,9 +157,11 @@ The `ENV` argument is required on every per-env recipe and is validated
 against exactly these two names — a typo fails loudly instead of resolving
 to a namespace that does not exist.
 
-**Guard rule.** Read-only recipes (`pods`, `logs`, `rollout`, `db-status`,
-`psql`, `mqtt-logs`, `mqtt-sub`, `argo-status`) run unguarded against both
-environments. Mutating recipes (`backend-restart`, `set-log-level`,
+**Guard rule.** Unguarded recipes (`pods`, `logs`, `rollout`, `db-status`,
+`psql`, `mqtt-logs`, `mqtt-sub`, `argo-status`) run against both
+environments with no confirmation prompt. That is not the same as
+read-only — `psql` in particular opens a superuser session that can write;
+see the note in §5. Mutating recipes (`backend-restart`, `set-log-level`,
 `argo-sync` of a `*-prod` app) prompt before touching prod: they print what
 they are about to do and require you to type `prod`. They **fail closed**
 without a tty, so nothing scripted or piped can fall through the prompt.
@@ -178,6 +199,14 @@ land on whichever instance is currently primary. Auth is superuser via
 in-pod peer auth over the unix socket, so no password is involved. The
 database name is `trakrf` in both namespaces (the namespace is what
 separates the environments, not the database name).
+
+> **`just psql prod` is not read-only.** It drops you into a superuser
+> session — `psql -U postgres -d trakrf` — that can insert, update, or drop
+> anything in the database. It runs unguarded, with no `confirm_prod`
+> prompt, because it opens a shell rather than performing one describable
+> operation `confirm_prod` could gate. The lack of a prompt reflects that,
+> not that the recipe is safe. Treat every statement you type inside it as
+> if it were already committed against production.
 
 ### Cluster health
 
@@ -400,7 +429,12 @@ Not duplicated here — run `just --list` for the full set:
   `trakrf-preview` namespace is deliberately excluded from scraping, so
   preview series are empty by design; prod is scraped.
 - `just db-restore-test [env]` — restore proof from the latest logical dump.
-  See [backups.md](backups.md).
+  See [backups.md](backups.md). **Currently broken:** this recipe (and
+  `db-restore-pitr-test`) still targets the superseded shared-cluster
+  topology (namespace `trakrf-system`, cluster `trakrf-db`) — the live
+  topology is per-env clusters `trakrf-db-preview` / `trakrf-db-prod` in
+  `trakrf-preview` / `trakrf-prod`. Expect both to fail until updated;
+  don't burn incident time on them.
 - `just smoke-gke` — scripted post-deploy smoke checks.
 
 ## 10. Troubleshooting

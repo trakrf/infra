@@ -86,6 +86,7 @@ Decisions we made, and why:
 | `argocd/projects/` | `AppProject` definitions. |
 | `scripts/apply-root-app.sh` | Templates `argocd/root/values.yaml` from tofu outputs and installs the root app. |
 | `scripts/smoke-{aks,gke}.sh` | Post-bootstrap precondition checks. |
+| `docs/ops.md` | Operational runbook for preview/prod — authentication, triage, database, backend, ArgoCD, broker. |
 | `docs/superpowers/specs/` | Design docs per milestone / ticket. |
 | `docs/superpowers/plans/` | Implementation plans executed against those specs. |
 | `justfile` | Top-level task runner. |

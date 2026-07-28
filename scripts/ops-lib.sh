@@ -47,3 +47,25 @@ confirm_prod() {
     fi
     return 0
 }
+
+# require_tf_env
+# Validate that the tofu/R2-backed environment variables are present before
+# a recipe touches terraform state or the R2 backend. The justfile loads
+# these lazily (env_var_or_default) so that recipes with no tofu dependency
+# work with no .env.local at all; this is the explicit, clear-message check
+# for the recipes that do need them, instead of a raw `env_var` failure at
+# justfile-load time or tofu silently running with empty TF_VAR_* values.
+require_tf_env() {
+    local missing=() v
+    for v in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_TF_STATE_BUCKET DOMAIN_NAME EKS_NLB_HOSTNAME; do
+        [ -n "${!v:-}" ] || missing+=("$v")
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        local joined
+        joined=$(printf ", %s" "${missing[@]}")
+        joined=${joined#, }
+        echo "ERROR: this recipe needs .env.local (${joined}). Run from the main checkout, or \`direnv allow\`." >&2
+        return 1
+    fi
+    return 0
+}
