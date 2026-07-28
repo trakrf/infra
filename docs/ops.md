@@ -66,11 +66,20 @@ state backend between an operator and production during an incident. Now
 nothing on the incident path needs `tofu`, R2 credentials, or `.env.local`.
 
 If the cluster is ever rebuilt, re-derive them and update those three
-variables in the justfile:
+variables in the justfile. Note that `tofu output` reads the R2 state
+backend, so it needs an initialized working directory and `.env.local`
+credentials — a bare `tofu output` fails with *"Backend initialization
+required"*:
 
 ```sh
-tofu -chdir=terraform/gcp output
+just _backend-conf terraform/gcp                       # writes gitignored backend.conf
+tofu -chdir=terraform/gcp init -backend-config=backend.conf
+tofu -chdir=terraform/gcp output                       # project_id, zone, cluster_name
 ```
+
+This is exactly the dependency the hardcoded literals exist to keep off
+the incident path. Re-derive when the cluster changes, not when you are
+trying to reach it.
 
 Already authenticated but pointed at the wrong cluster? `just gke-creds`
 re-points kubectl without touching credentials.
@@ -407,6 +416,23 @@ Mid-incident it reads like a credential failure and will send you down the
 wrong path — re-authenticating does not fix it and wastes minutes. Root
 cause is undiagnosed. `just ops-check` already retries three times per
 namespace for this reason.
+
+The converse also holds: when `ops-check` reports a namespace unreachable,
+it points here, but **check its first two lines first**. Expired or missing
+credentials produce the same unreachable-namespace result, and then the fix
+is `just gcp-auth`, not a retry:
+
+```
+❌ gcloud not authenticated  → run: just gcp-auth
+❌ ADC missing               → run: just gcp-auth
+✅ kubectl context gke_trakrf-494211_us-central1-a_gke-trakrf-demo-usc1
+❌ namespace trakrf-preview unreachable after 3 tries → see docs/ops.md (Troubleshooting)
+❌ namespace trakrf-prod unreachable after 3 tries → see docs/ops.md (Troubleshooting)
+```
+
+Two ❌ auth lines above the unreachable namespaces means this is an auth
+failure wearing a network error's clothes. Unreachable namespaces with the
+first two lines green is the real transient.
 
 ### ``Recipe `psql` got 0 arguments but takes 1``
 
