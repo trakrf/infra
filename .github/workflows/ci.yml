@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version_file: .opentofu-version
       - run: tofu fmt -check -recursive
         working-directory: terraform
 
@@ -25,6 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version_file: .opentofu-version
       - run: tofu init -backend=false -input=false
         working-directory: terraform/${{ matrix.dir }}
       - run: tofu validate
