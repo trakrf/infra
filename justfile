@@ -660,6 +660,34 @@ set-log-level ENV LEVEL:
     echo "⚠️  EPHEMERAL — ArgoCD will revert this on the next sync of trakrf-backend-{{ ENV }}."
     echo "   Durable path: argocd/root/templates/ inlineValues + scripts/apply-root-app.sh gke"
 
+# Follow broker logs.
+#   just mqtt-logs prod
+mqtt-logs ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    kubectl -n "trakrf-{{ ENV }}" logs -l app.kubernetes.io/name=trakrf-mosquitto \
+        -c mosquitto --tail=100 -f
+
+# Subscribe to a topic from inside the broker pod (loopback listener, no TLS
+# setup needed). Credentials are read live from the trakrf-mosquitto-auth
+# Secret, not from the environment. Ctrl-C to stop.
+#   just mqtt-sub preview '#'
+#   just mqtt-sub prod 'trakrf.id/+/tag_scan'
+mqtt-sub ENV TOPIC:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    topic='{{ TOPIC }}'
+    user=$(kubectl -n "$ns" get secret trakrf-mosquitto-auth -o jsonpath='{.data.username}' | base64 -d)
+    pass=$(kubectl -n "$ns" get secret trakrf-mosquitto-auth -o jsonpath='{.data.password}' | base64 -d)
+    echo "→ $ns broker, user $user, topic $topic (Ctrl-C to stop)"
+    kubectl -n "$ns" exec -i deploy/trakrf-mosquitto -c mosquitto -- \
+        mosquitto_sub -h 127.0.0.1 -p 1883 -u "$user" -P "$pass" -t "$topic" -v
+
 # ============================================================================
 # Worktree Support
 # ============================================================================
