@@ -161,11 +161,16 @@ to a namespace that does not exist.
 `psql`, `mqtt-logs`, `mqtt-sub`, `argo-status`) run against both
 environments with no confirmation prompt. That is not the same as
 read-only — `psql` in particular opens a superuser session that can write;
-see the note in §5. Mutating recipes (`backend-restart`, `set-log-level`,
-`argo-sync` of a `*-prod` app) prompt before touching prod: they print what
-they are about to do and require you to type `prod`. They **fail closed**
-without a tty, so nothing scripted or piped can fall through the prompt.
-Set `YES=1` to skip the prompt deliberately:
+see the note in §5. Mutating recipes (`backend-restart`, `set-log-level`)
+prompt before touching prod: they print what they are about to do and
+require you to type `prod`. `argo-sync` prompts for every app **except**
+`*-preview` ones — that includes `*-prod` apps, but also the cluster-scoped
+apps (`traefik`, `traefik-config`, `cert-manager`, `cert-manager-config`,
+`argocd`, `argocd-image-updater`, `reflector`, `reloader`), because those
+carry production traffic for both environments even though their names
+don't end in `-prod`. All of these **fail closed** without a tty, so
+nothing scripted or piped can fall through the prompt. Set `YES=1` to skip
+the prompt deliberately:
 
 ```sh
 YES=1 just backend-restart prod
@@ -365,8 +370,11 @@ kubectl -n argocd patch application trakrf-backend-preview --type merge -p '{"op
 
 The `argocd` CLI is not installed on this box. Patching the Application's
 `operation` field is exactly what the CLI does under the hood. The recipe
-verifies the Application exists before patching, and prompts for any
-`*-prod` app. Watch the result with `just argo-status`.
+verifies the Application exists before patching, and prompts for every app
+except `*-preview` ones — that includes `*-prod` apps and the
+cluster-scoped apps (`traefik`, `cert-manager`, `argocd`, ...), which serve
+production traffic for both environments despite not being named `*-prod`.
+Watch the result with `just argo-status`.
 
 Note: edits under `argocd/root/templates/*` do **not** auto-sync — a sync
 request will not pick them up. Those require `./scripts/apply-root-app.sh gke`.

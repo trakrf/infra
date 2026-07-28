@@ -338,7 +338,10 @@ argo-status:
     @kubectl get applications -n argocd \
         -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,REVISION:'.status.sync.revision'
 
-# Request a sync of one ArgoCD Application. Prompts for any *-prod app.
+# Request a sync of one ArgoCD Application. Prompts for everything except
+# *-preview apps: *-prod apps AND the cluster-scoped apps (traefik,
+# cert-manager, argocd, ...) that carry production traffic for both
+# environments despite not being named *-prod.
 # The argocd CLI is not installed here; this patches the Application's
 # operation field, which is what the CLI does under the hood.
 #   just argo-sync trakrf-backend-preview
@@ -351,7 +354,8 @@ argo-sync APP:
         exit 1
     fi
     case "{{ APP }}" in
-        *-prod) confirm_prod prod "argocd sync {{ APP }}" ;;
+        *-preview) ;;
+        *) confirm_prod prod "argocd sync {{ APP }}" ;;
     esac
     kubectl -n argocd patch application "{{ APP }}" --type merge \
         -p '{"operation":{"initiatedBy":{"username":"just-argo-sync"},"sync":{"revision":"HEAD"}}}'
