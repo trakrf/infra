@@ -4,6 +4,12 @@
 - **IaC**: OpenTofu (Terraform fork) with Cloudflare + AWS providers
 - **State**: Cloudflare R2 bucket (shared across all providers)
 - **Env**: `.env.local` (not `.env`), loaded via direnv
+- **OpenTofu version**: pinned in `.opentofu-version` (repo root) — the single
+  source CI reads via `setup-opentofu`'s `tofu_version_file`. Bumping across a
+  minor (1.12 → 1.13) also requires updating `required_version` in all five
+  roots (`terraform/{gcp,aws,azure}/provider.tf`,
+  `terraform/{bootstrap,cloudflare}/versions.tf`), which is deliberately
+  bounded (`~> 1.12`) so an unintended jump fails loudly at `init`.
 
 ## Commands
 - `just cloudflare` — plan and apply Cloudflare resources

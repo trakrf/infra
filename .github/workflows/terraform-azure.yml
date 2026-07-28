@@ -46,6 +46,8 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version_file: .opentofu-version
       - name: Write backend.conf
         run: printf 'endpoints = { s3 = "%s" }\n' "$R2_ENDPOINT" > backend.conf
       - name: Tofu init
@@ -90,6 +92,8 @@ jobs:
           tenant-id:       ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version_file: .opentofu-version
       - name: Write backend.conf
         run: printf 'endpoints = { s3 = "%s" }\n' "$R2_ENDPOINT" > backend.conf
       - name: Tofu init
