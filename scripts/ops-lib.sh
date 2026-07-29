@@ -69,3 +69,25 @@ require_tf_env() {
     fi
     return 0
 }
+
+# cnpg_primary_pod <namespace>
+# Echo the name of the CNPG primary pod in <namespace>.
+#
+# Selects on cnpg.io/instanceRole=primary rather than the older
+# cnpg.io/cluster=<name>,role=primary pair: instanceRole is maintained by the
+# operator across a failover, so this keeps resolving after the primary moves,
+# and it does not need the cluster name threaded in.
+cnpg_primary_pod() {
+    local ns="${1:-}" pod
+    if [ -z "$ns" ]; then
+        echo "ERROR: cnpg_primary_pod requires a namespace" >&2
+        return 1
+    fi
+    pod=$(kubectl -n "$ns" get pod -l cnpg.io/instanceRole=primary \
+            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [ -z "$pod" ]; then
+        echo "ERROR: no CNPG primary found in $ns" >&2
+        return 1
+    fi
+    echo "$pod"
+}

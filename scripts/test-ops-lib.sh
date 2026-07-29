@@ -38,6 +38,33 @@ else
   echo "  ⏭  skipped tty tests (util-linux 'script' not found)"
 fi
 
+echo "cnpg_primary_pod:"
+
+# Stub kubectl: a shell function shadows the real binary for the callee.
+kubectl() { echo "trakrf-db-preview-1"; }
+out=$(cnpg_primary_pod trakrf-preview 2>/dev/null); rc=$?
+check "returns rc=0 when a primary exists" $rc 0
+if [ "$out" = "trakrf-db-preview-1" ]; then
+  ok "echoes the pod name"
+else
+  bad "echoes the pod name (got '$out')"
+fi
+
+# Empty stdout is how kubectl reports "no pods matched" for this jsonpath.
+kubectl() { echo -n ""; }
+cnpg_primary_pod trakrf-preview >/dev/null 2>&1
+check "rejects an empty result" $? 1
+
+# A hard kubectl failure (bad ns, auth expired) must not be swallowed.
+kubectl() { return 1; }
+cnpg_primary_pod trakrf-preview >/dev/null 2>&1
+check "rejects a kubectl failure" $? 1
+
+cnpg_primary_pod >/dev/null 2>&1
+check "rejects a missing namespace arg" $? 1
+
+unset -f kubectl
+
 echo
 echo "passed: $pass  failed: $fail"
 [ "$fail" -eq 0 ]

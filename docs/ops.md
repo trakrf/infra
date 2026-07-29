@@ -436,13 +436,11 @@ Not duplicated here — run `just --list` for the full set:
 - `just prometheus-ui` — Prometheus on `:9090`. Note that the
   `trakrf-preview` namespace is deliberately excluded from scraping, so
   preview series are empty by design; prod is scraped.
-- `just db-restore-test [env]` — restore proof from the latest logical dump.
-  See [backups.md](backups.md). **Currently broken:** this recipe (and
-  `db-restore-pitr-test`) still targets the superseded shared-cluster
-  topology (namespace `trakrf-system`, cluster `trakrf-db`) — the live
-  topology is per-env clusters `trakrf-db-preview` / `trakrf-db-prod` in
-  `trakrf-preview` / `trakrf-prod`. Expect both to fail until updated;
-  don't burn incident time on them.
+- `just db-restore-test <env>` — restore proof from the latest logical dump.
+  `<env>` is required. Against prod it creates and drops a scratch database
+  on the live primary, so it prompts for confirmation. See [backups.md](backups.md).
+- `just db-restore-pitr-test <env> [target-time]` — PITR proof via a scratch
+  cluster recovered from the object store. Does not touch the live cluster.
 - `just smoke-gke` — scripted post-deploy smoke checks.
 
 ## 10. Troubleshooting
