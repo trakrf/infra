@@ -601,12 +601,7 @@ psql ENV:
     source scripts/ops-lib.sh
     require_env "{{ ENV }}"
     ns="trakrf-{{ ENV }}"
-    pod=$(kubectl -n "$ns" get pod -l cnpg.io/instanceRole=primary \
-            -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    if [ -z "$pod" ]; then
-        echo "ERROR: no CNPG primary found in $ns" >&2
-        exit 1
-    fi
+    pod=$(cnpg_primary_pod "$ns")
     echo "→ $ns/$pod (database: trakrf)"
     kubectl -n "$ns" exec -it "$pod" -c postgres -- psql -U postgres -d trakrf
 
