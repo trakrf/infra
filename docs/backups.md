@@ -253,12 +253,57 @@ just db-restore-pitr-test prod
 
 # Recover to a specific point in time (RFC3339 UTC):
 just db-restore-pitr-test prod "2026-05-27T10:30:00Z"
+
+# Override how long to wait for the scratch cluster to become Ready
+# (default 120m — see "Recovery time and the Ready-wait timeout" below):
+RESTORE_READY_TIMEOUT=3h just db-restore-pitr-test preview
 ```
 
 `ENV` is required; `TARGET_TIME` is optional and defaults to latest
 available WAL. This recipe does **not** touch the live cluster — it
 only reads that env's object store — so it runs unguarded even against
 prod, with no confirmation prompt.
+
+#### Recovery time and the Ready-wait timeout
+
+Recovering to latest (no `TARGET_TIME`) replays every WAL segment
+written since the source's last base backup, so how long the recipe
+waits for the scratch cluster to reach Ready depends entirely on how
+much WAL has piled up since then — not on dataset size.
+
+Measured on preview 2026-07-29 22:24 UTC: **1,193 WAL segments / 5.14
+GB** accumulated in 5h11m since the prior base backup
+(`20260729T171320`) — roughly **1 GB of WAL per hour**, driven by live
+MQTT scan ingestion. That run did not finish inside the previous 20m
+wait. Base backups run once daily at 09:30 UTC, so the worst case is
+late in the day, just before the next one: close to 24h of
+accumulation at ~1 GB/hour is on the order of **~24 GB of WAL** to
+fetch and replay. The recipe's default wait
+(`RESTORE_READY_TIMEOUT`, 120m) is sized with headroom above a
+straight-line extrapolation from the measured case. Prod's WAL volume
+is comparatively negligible (15 objects / 5 MB in 13h in the same
+measurement) and finishes in a few minutes regardless of this default.
+
+Override the wait with the `RESTORE_READY_TIMEOUT` env var (e.g.
+`RESTORE_READY_TIMEOUT=3h`) — not a recipe argument, so it can't
+collide with `ENV`/`TARGET_TIME` ordering. A malformed value (not a
+duration like `20m`, `90m`, `2h`) is rejected with a warning and falls
+back to the default rather than silently becoming a zero or unbounded
+wait.
+
+Two ways to make a **preview** proof fast instead of slow-but-honest:
+
+- Run it shortly after the daily 09:30 UTC scheduled base backup,
+  while little WAL has accumulated yet.
+- Pass a `TARGET_TIME` close to the most recent base backup's
+  timestamp. CNPG picks the closest backup completed before that
+  target and stops WAL replay at the target, so this bounds replay
+  instead of chasing latest — it does not depend on how much WAL has
+  piled up since.
+
+Taking a fresh base backup first (`just db-pitr-trigger-base`) is
+**not** a shortcut: that recipe itself takes ~18 minutes to complete
+(see above), so it costs more time than it saves.
 
 The recipe spins up a scratch Cluster always named `trakrf-restore-test`
 in `trakrf-system` (recovering from whichever env's object store you
