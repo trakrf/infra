@@ -403,24 +403,44 @@ prometheus-ui:
     @kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090 --address 0.0.0.0
 
 # Restore proof: pull the latest pg_dump for ENV from GCS, restore it
-# into a scratch database on the live CNPG cluster, run a sanity query,
-# drop the scratch database. Requires:
+# into a scratch database on that env's live CNPG cluster, run a sanity
+# query, drop the scratch database. Requires:
 #   - `just gcp-auth` (logs in and refreshes ADC in one step — `gcloud storage`
 #     needs ADC, which `gcloud auth login --update-adc` already provides)
 #   - kubectl context pointed at the GKE cluster
 #
+# The bucket is read from the live Cluster spec rather than a tofu output,
+# so this needs no .env.local and no initialized R2 backend — and it reports
+# where the cluster actually writes, catching drift instead of masking it.
+#
+# ENV is required: this recipe can mutate prod, so it must not default.
+#
 # Usage:
-#   just db-restore-test            # defaults to preview
+#   just db-restore-test preview
 #   just db-restore-test prod
-db-restore-test ENV="preview":
+db-restore-test ENV:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/ops-lib.sh
-    require_tf_env
-    bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
-    echo "Looking for latest dump in gs://${bucket}/{{ ENV }}/..."
-    latest=$(gcloud storage ls "gs://${bucket}/{{ ENV }}/**/*.pgdump" | sort | tail -1)
-    test -n "$latest" || { echo "no dumps found in gs://${bucket}/{{ ENV }}/"; exit 1; }
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    cluster="trakrf-db-{{ ENV }}"
+
+    confirm_prod "{{ ENV }}" "restore proof — creates and drops a scratch DB on the live ${cluster} primary"
+
+    # Bucket comes from the live Cluster's barman config, not tofu: no
+    # backend init, no .env.local, and it is authoritative for this cluster.
+    bucket=$(kubectl -n "$ns" get cluster "$cluster" \
+      -o jsonpath='{.spec.backup.barmanObjectStore.destinationPath}')
+    bucket=${bucket#gs://}
+    test -n "$bucket" || { echo "could not resolve backup bucket from cluster ${cluster} in ${ns}"; exit 1; }
+
+    # Path layout is set by helm/trakrf-db/templates/backup-cronjob.yaml:
+    #   gs://<bucket>/<cluster>/dump/YYYY/MM/DD/HHMM.pgdump
+    # Zero-padded, so lexical sort puts the newest last.
+    echo "Looking for latest dump in gs://${bucket}/${cluster}/dump/..."
+    latest=$(gcloud storage ls "gs://${bucket}/${cluster}/dump/**/*.pgdump" | sort | tail -1)
+    test -n "$latest" || { echo "no dumps found in gs://${bucket}/${cluster}/dump/"; exit 1; }
     echo "Latest dump: $latest"
 
     tmp=$(mktemp -d)
@@ -430,10 +450,7 @@ db-restore-test ENV="preview":
 
     # `kubectl exec ... psql -U postgres` on the CNPG primary uses peer
     # auth via the unix socket — no password needed.
-    pg_pod=$(kubectl -n trakrf-system get pod \
-      -l cnpg.io/cluster=trakrf-db,role=primary \
-      -o jsonpath='{.items[0].metadata.name}')
-    test -n "$pg_pod" || { echo "no CNPG primary pod found"; exit 1; }
+    pg_pod=$(cnpg_primary_pod "$ns")
     scratch="trakrf_restore_test_$(date -u +%s)"
 
     echo "Creating scratch DB ${scratch} on ${pg_pod}..."
@@ -443,26 +460,26 @@ db-restore-test ENV="preview":
     # on hypertable operations" while replaying foreign-key constraints
     # and exits non-zero — the standard Timescale logical-restore pattern.
     # See https://docs.timescale.com/self-hosted/latest/backup-and-restore/logical-backup/
-    kubectl -n trakrf-system exec "${pg_pod}" -- \
+    kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -v ON_ERROR_STOP=1 \
         -c "CREATE DATABASE \"${scratch}\""
-    kubectl -n trakrf-system exec "${pg_pod}" -- \
+    kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
         -c "CREATE EXTENSION IF NOT EXISTS timescaledb" \
         -c "SELECT timescaledb_pre_restore()"
 
     echo "Restoring dump into ${scratch}..."
-    kubectl -n trakrf-system exec -i "${pg_pod}" -- \
+    kubectl -n "$ns" exec -i "${pg_pod}" -- \
       pg_restore --no-owner --no-privileges -U postgres -d "${scratch}" \
       < "$tmp/dump.pgdump"
 
     echo "Running timescaledb_post_restore()..."
-    kubectl -n trakrf-system exec "${pg_pod}" -- \
+    kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
         -c "SELECT timescaledb_post_restore()"
 
     echo "Sanity check — schema + table row counts:"
-    kubectl -n trakrf-system exec "${pg_pod}" -- \
+    kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
         -c "\dn" \
         -c "SELECT schemaname, relname, n_live_tup
@@ -471,10 +488,10 @@ db-restore-test ENV="preview":
             ORDER BY relname;"
 
     echo "Dropping scratch DB ${scratch}..."
-    kubectl -n trakrf-system exec "${pg_pod}" -- \
+    kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -c "DROP DATABASE \"${scratch}\""
 
-    echo "Restore proof complete for ENV={{ ENV }}."
+    echo "Restore proof complete for {{ ENV }} (${cluster} in ${ns})."
 
 # Manually trigger an ad-hoc CNPG Backup CR against the trakrf-db
 # cluster. Useful for first-install verification (don't wait for the
