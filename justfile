@@ -590,7 +590,15 @@ db-restore-pitr-test ENV TARGET_TIME="":
     gsa=$(kubectl -n "$src_ns" get sa cnpg-backups \
       -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}')
     test -n "$gsa" || { echo "could not resolve backup GSA from sa/cnpg-backups in ${src_ns}"; exit 1; }
-    echo "Recovering ${src_cluster} from gs://${bucket}/${src_cluster} as ${gsa}"
+
+    # Storage size tracks the SOURCE cluster's provisioned size, not a
+    # literal. A hardcoded scratch size silently rots as the source database
+    # grows: preview's trakrf DB (~6GB) no longer fits in a 5Gi literal,
+    # which is exactly the ENOSPC crashloop this recipe hit in production.
+    storage_size=$(kubectl -n "$src_ns" get cluster "$src_cluster" \
+      -o jsonpath='{.spec.storage.size}')
+    test -n "$storage_size" || { echo "could not resolve storage size from cluster ${src_cluster} in ${src_ns}"; exit 1; }
+    echo "Recovering ${src_cluster} from gs://${bucket}/${src_cluster} as ${gsa} (storage ${storage_size})"
 
     echo "Pre-cleanup: deleting any leftover ${scratch} cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --ignore-not-found --wait=true
@@ -638,7 +646,7 @@ db-restore-pitr-test ENV TARGET_TIME="":
       instances: 1
       imageName: ghcr.io/clevyr/cloudnativepg-timescale:17.2-ts2.18
       storage:
-        size: 5Gi
+        size: ${storage_size}
         storageClass: premium-rwo
       affinity:
         tolerations:
@@ -666,8 +674,19 @@ db-restore-pitr-test ENV TARGET_TIME="":
     scratch_applied=1
     trap cleanup EXIT
 
-    echo "Waiting up to 10 min for scratch cluster to become Ready..."
-    kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout=10m
+    # 20m, not 10m: a real restore replays a full base backup plus WAL, and
+    # that alone has measured ~18 minutes on this cluster once storage is
+    # sized correctly — a multi-minute wait here is normal and healthy, not
+    # a hang.
+    echo "Waiting up to 20 min for scratch cluster to become Ready. Restoring a" \
+         "multi-GB base backup and replaying WAL can genuinely take most of" \
+         "that — a slow-but-progressing restore is expected, not a hang."
+    if ! kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout=20m; then
+      echo "Scratch cluster ${scratch} did not become Ready in time." >&2
+      echo "Before the cleanup trap deletes it, inspect the recovery job's logs:" >&2
+      echo "  kubectl -n ${ns} logs -l cnpg.io/jobRole=full-recovery --tail=50" >&2
+      exit 1
+    fi
 
     pg_pod=$(cnpg_primary_pod "$ns")
 
