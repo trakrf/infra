@@ -83,6 +83,14 @@ scratch database even if the run fails partway through, so a mid-run
 failure never leaves it behind on the live primary. Safe to run on the
 live cluster — no side effects on the real `trakrf` database.
 
+> **Note:** "no side effects on `trakrf`" is not the same as "no side
+> effects at all" — restoring the dump into the scratch database is
+> real write activity on the live primary, and it is WAL-logged like
+> any other write. If you're also going to run `db-restore-pitr-test`
+> against the same env, see "Interaction with `db-restore-test`" under
+> the restore-proof recipe section below before deciding the order to
+> run them in.
+
 The recipe brackets `pg_restore` with `SELECT timescaledb_pre_restore()`
 and `SELECT timescaledb_post_restore()` per the Timescale logical-restore
 procedure — without this, pg_restore fails on hypertable foreign-key
@@ -304,6 +312,46 @@ Two ways to make a **preview** proof fast instead of slow-but-honest:
 Taking a fresh base backup first (`just db-pitr-trigger-base`) is
 **not** a shortcut: that recipe itself takes ~18 minutes to complete
 (see above), so it costs more time than it saves.
+
+#### Interaction with `db-restore-test`
+
+Running the logical restore-proof (`just db-restore-test <env>`)
+before this one, against the *same* env, makes this one slower — the
+two are not independent. `db-restore-test` restores a full logical
+dump into a scratch database on that env's live primary (see
+"Restoring (verification / scratch)" above), and that write activity
+is WAL-logged like any other. Recovering to latest here means
+replaying every WAL segment written since the last base backup,
+including whatever `db-restore-test` just generated — so a
+`db-restore-test` run immediately beforehand directly inflates the
+wait measured above.
+
+Measured on preview (2026-07-29): steady-state WAL at rest runs around
+**~21 MB/hour** — this baseline already includes live MQTT scan
+ingestion, ambient tag reads, and the continuous-aggregate refresh
+policy, so ordinary ingestion traffic is not what produces the large
+bursts described below. A single `db-restore-test preview` run — which
+writes roughly 16.8M rows from a ~504 MB compressed dump (expanding to
+~6 GB) into the scratch database — produced a burst of roughly
+**300–380 WAL objects / ~1.4–1.7 GB compressed** in the surrounding
+30-minute window. Three such runs accumulated in one session added up
+to ~5.1 GB of extra WAL, which pushed a later `db-restore-pitr-test
+preview` past what was then a 20m Ready timeout — the burst, not the
+baseline, is what did that.
+
+Prod is unaffected in practice: its logical dump is ~220 KB and its
+steady-state WAL is a few MB per day, so a `db-restore-test prod` run
+barely moves the needle.
+
+This is inherent to what `db-restore-test` does — it writes real data
+to the live primary — not a defect in either recipe. If you intend to
+run both proofs against the same env:
+
+- **Prefer running `db-restore-pitr-test` before `db-restore-test`.**
+  Reversing the order is the simplest way to keep both proofs fast.
+- If `db-restore-test` has to go first, budget extra time for the
+  PITR proof afterwards, or raise `RESTORE_READY_TIMEOUT` (see above)
+  rather than assuming a slow run has hung.
 
 The recipe spins up a scratch Cluster always named `trakrf-restore-test`
 in `trakrf-system` (recovering from whichever env's object store you
