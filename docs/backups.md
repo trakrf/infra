@@ -71,7 +71,14 @@ it reports where the cluster actually writes rather than where docs
 say it should. It pulls the latest dump for the named env, restores it
 into a scratch database (`trakrf_restore_test_<epoch>`) on that env's
 live CNPG primary, prints `\dn` and table row counts from the `trakrf`
-schema, then drops the scratch database. A cleanup trap drops the
+schema, then drops the scratch database. Before dropping it, the recipe
+**gates** on those counts: a restore that comes back with zero tables,
+or with zero live rows across the whole `trakrf` schema, fails the proof
+non-zero instead of reporting a hollow success. The judgement is made on
+the schema as a whole, so a legitimately empty individual table (today:
+`tag_scans` / `asset_scans`) does not trip it, and a query that cannot
+run is reported as `INCONCLUSIVE`, distinct from an empty restore.
+A cleanup trap drops the
 scratch database even if the run fails partway through, so a mid-run
 failure never leaves it behind on the live primary. Safe to run on the
 live cluster — no side effects on the real `trakrf` database.
@@ -261,9 +268,35 @@ the scratch cluster even if the run fails partway, so a failed attempt
 doesn't leak it. It also pre-deletes any leftover scratch cluster from
 a previous run before applying a new one, so it's safe to re-run.
 WI for the scratch SA is preconfigured in
-`terraform/gcp/cnpg_backups.tf`. To inspect the recovered cluster
-before teardown, comment out the final `kubectl delete cluster` line
-in the recipe.
+`terraform/gcp/cnpg_backups.tf`.
+
+**To inspect the recovered cluster before teardown**, you must defeat
+*both* deletion paths — the success-path teardown and the cleanup trap.
+In the `db-restore-pitr-test` recipe, near the end:
+
+```sh
+    echo "Tearing down scratch cluster..."
+    # kubectl -n "$ns" delete cluster "$scratch" --wait=true   # <- comment out
+    scratch_applied=0                                          # <- KEEP this line
+```
+
+Commenting out the `kubectl delete` line alone is not enough *unless*
+the `scratch_applied=0` line immediately below it still runs — that
+assignment is what disarms the EXIT trap. If you comment out the whole
+block (or the `scratch_applied=0` line with it), the trap still sees
+`scratch_applied=1` and deletes the cluster on normal exit; in that case
+also comment out the `trap cleanup EXIT` line further up, immediately
+after `scratch_applied=1`.
+
+The cluster then survives the run. Inspect it with
+`kubectl -n trakrf-system exec <pod> -- psql -U postgres -d trakrf`, and
+clean up by hand afterwards:
+
+```sh
+kubectl -n trakrf-system delete cluster trakrf-restore-test
+```
+
+(The next `just db-restore-pitr-test` run also pre-deletes it.)
 
 ### Real-recovery procedure (manual)
 
