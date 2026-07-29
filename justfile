@@ -522,29 +522,38 @@ db-restore-test ENV:
 
     echo "Restore proof complete for {{ ENV }} (${cluster} in ${ns})."
 
-# Manually trigger an ad-hoc CNPG Backup CR against the trakrf-db
-# cluster. Useful for first-install verification (don't wait for the
-# scheduled run) or for taking a guaranteed-fresh base backup before a
-# risky operation.
+# Manually trigger an ad-hoc CNPG Backup CR against ENV's cluster.
+# Useful for first-install verification (don't wait for the scheduled
+# run) or for taking a guaranteed-fresh base backup before a risky
+# operation.
 #
-# Usage: just db-pitr-trigger-base
-db-pitr-trigger-base:
+# Usage:
+#   just db-pitr-trigger-base preview
+#   just db-pitr-trigger-base prod
+db-pitr-trigger-base ENV:
     #!/usr/bin/env bash
     set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    cluster="trakrf-db-{{ ENV }}"
+
+    confirm_prod "{{ ENV }}" "trigger an ad-hoc base backup on the live ${cluster}"
+
     # kubectl apply requires a fixed name; embed a timestamp for uniqueness.
-    name="trakrf-db-manual-$(date -u +%Y%m%d%H%M%S)"
-    kubectl -n trakrf-system apply -f - <<EOF
+    name="${cluster}-manual-$(date -u +%Y%m%d%H%M%S)"
+    kubectl -n "$ns" apply -f - <<EOF
     apiVersion: postgresql.cnpg.io/v1
     kind: Backup
     metadata:
       name: ${name}
-      namespace: trakrf-system
+      namespace: ${ns}
     spec:
       cluster:
-        name: trakrf-db
+        name: ${cluster}
       method: barmanObjectStore
     EOF
-    echo "Backup CR ${name} submitted. Watch with: kubectl -n trakrf-system get backup -w"
+    echo "Backup CR ${name} submitted. Watch with: kubectl -n ${ns} get backup -w"
 
 # Proves CNPG PITR by spinning up a scratch Cluster that recovers ENV's
 # barman object store, optionally to a specific point in time. The scratch
