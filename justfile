@@ -452,6 +452,32 @@ db-restore-test ENV:
     # auth via the unix socket — no password needed.
     pg_pod=$(cnpg_primary_pod "$ns")
     scratch="trakrf_restore_test_$(date -u +%s)"
+    scratch_created=0
+
+    # Best-effort cleanup on ANY exit once the scratch DB exists, so a
+    # mid-run failure (pg_restore, timescaledb_post_restore, the sanity
+    # query) never leaves it behind on the live primary — including prod,
+    # where it would otherwise silently consume PVC space on a
+    # single-instance cluster. Installed only after CREATE DATABASE
+    # succeeds, so an earlier abort (bucket resolution, download) never
+    # tries to drop a database that was never created.
+    #
+    # WITH (FORCE) (PG 13+; this cluster runs PG 17) drops it even if a
+    # session is still attached. The drop itself is best-effort: a
+    # failure here only warns, it must never mask the recipe's real exit
+    # status, which is captured up front and re-asserted via `exit`.
+    cleanup() {
+        local status=$?
+        rm -rf "$tmp"
+        if [ "$scratch_created" = "1" ]; then
+            echo "Dropping scratch DB ${scratch}..."
+            kubectl -n "$ns" exec "${pg_pod}" -- \
+              psql -U postgres -v ON_ERROR_STOP=1 \
+                -c "DROP DATABASE IF EXISTS \"${scratch}\" WITH (FORCE)" \
+              || echo "WARNING: failed to drop scratch DB ${scratch} on ${cluster} in ${ns} — drop it manually" >&2
+        fi
+        exit "$status"
+    }
 
     echo "Creating scratch DB ${scratch} on ${pg_pod}..."
     # Create the scratch DB with the timescaledb extension pre-installed,
@@ -463,6 +489,8 @@ db-restore-test ENV:
     kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -v ON_ERROR_STOP=1 \
         -c "CREATE DATABASE \"${scratch}\""
+    scratch_created=1
+    trap cleanup EXIT
     kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
         -c "CREATE EXTENSION IF NOT EXISTS timescaledb" \
@@ -489,7 +517,8 @@ db-restore-test ENV:
 
     echo "Dropping scratch DB ${scratch}..."
     kubectl -n "$ns" exec "${pg_pod}" -- \
-      psql -U postgres -c "DROP DATABASE \"${scratch}\""
+      psql -U postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE \"${scratch}\""
+    scratch_created=0
 
     echo "Restore proof complete for {{ ENV }} (${cluster} in ${ns})."
 
