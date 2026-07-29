@@ -546,25 +546,42 @@ db-pitr-trigger-base:
     EOF
     echo "Backup CR ${name} submitted. Watch with: kubectl -n trakrf-system get backup -w"
 
-# Proves CNPG PITR by spinning up a scratch Cluster that recovers from
-# the barman object store, optionally to a specific point in time. The
-# scratch cluster always uses the fixed name `trakrf-restore-test` so
-# the static WI binding in terraform/gcp/cnpg_backups.tf fits.
+# Proves CNPG PITR by spinning up a scratch Cluster that recovers ENV's
+# barman object store, optionally to a specific point in time. The scratch
+# cluster always uses the fixed name `trakrf-restore-test` in trakrf-system
+# so the static WI binding in terraform/gcp/cnpg_backups.tf fits — only the
+# recovery source (serverName) is per-env.
+#
+# Does NOT touch the live cluster: it reads the object store only. Safe to
+# run against prod without a confirmation gate.
 #
 # Idempotent: pre-deletes any leftover scratch cluster before applying.
 #
 # Usage:
-#   just db-restore-pitr-test               # recover to latest available
-#   just db-restore-pitr-test "2026-05-27T10:30:00Z"
-db-restore-pitr-test TARGET_TIME="":
+#   just db-restore-pitr-test preview
+#   just db-restore-pitr-test prod
+#   just db-restore-pitr-test prod "2026-05-27T10:30:00Z"
+db-restore-pitr-test ENV TARGET_TIME="":
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/ops-lib.sh
-    require_tf_env
-    bucket=$(tofu -chdir=terraform/gcp output -raw cnpg_backup_bucket)
-    gsa=$(tofu -chdir=terraform/gcp output -raw cnpg_backups_service_account_email)
+    require_env "{{ ENV }}"
+    src_ns="trakrf-{{ ENV }}"
+    src_cluster="trakrf-db-{{ ENV }}"
     scratch=trakrf-restore-test
     ns=trakrf-system
+
+    # Bucket and backup GSA come from the live env cluster + its backup KSA,
+    # not tofu — no backend init required.
+    bucket=$(kubectl -n "$src_ns" get cluster "$src_cluster" \
+      -o jsonpath='{.spec.backup.barmanObjectStore.destinationPath}')
+    bucket=${bucket#gs://}
+    test -n "$bucket" || { echo "could not resolve backup bucket from cluster ${src_cluster} in ${src_ns}"; exit 1; }
+
+    gsa=$(kubectl -n "$src_ns" get sa cnpg-backups \
+      -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}')
+    test -n "$gsa" || { echo "could not resolve backup GSA from sa/cnpg-backups in ${src_ns}"; exit 1; }
+    echo "Recovering ${src_cluster} from gs://${bucket}/${src_cluster} as ${gsa}"
 
     echo "Pre-cleanup: deleting any leftover ${scratch} cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --ignore-not-found --wait=true
@@ -574,7 +591,7 @@ db-restore-pitr-test TARGET_TIME="":
       target_block=$'\n      recoveryTarget:\n        targetTime: "{{ TARGET_TIME }}"'
     fi
 
-    echo "Applying scratch Cluster ${scratch} pointing at gs://${bucket}/trakrf-db ..."
+    echo "Applying scratch Cluster ${scratch} pointing at gs://${bucket}/${src_cluster} ..."
     cat <<EOF | kubectl apply -f -
     apiVersion: postgresql.cnpg.io/v1
     kind: Cluster
@@ -604,7 +621,7 @@ db-restore-pitr-test TARGET_TIME="":
         - name: trakrf-db-source
           barmanObjectStore:
             destinationPath: gs://${bucket}
-            serverName: trakrf-db
+            serverName: ${src_cluster}
             googleCredentials:
               gkeEnvironment: true
             wal:
@@ -614,29 +631,25 @@ db-restore-pitr-test TARGET_TIME="":
     echo "Waiting up to 10 min for scratch cluster to become Ready..."
     kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout=10m
 
-    pg_pod=$(kubectl -n "$ns" get pod -l cnpg.io/cluster=${scratch},role=primary \
-              -o jsonpath='{.items[0].metadata.name}')
-    test -n "$pg_pod" || { echo "no scratch primary pod found"; exit 1; }
+    pg_pod=$(cnpg_primary_pod "$ns")
 
     echo
     echo "==== databases in recovered cluster ===="
     kubectl -n "$ns" exec "$pg_pod" -- psql -U postgres -c "\l"
 
-    for db in trakrf_preview trakrf_prod; do
-      echo
-      echo "==== ${db}: trakrf schema rowcounts ===="
-      kubectl -n "$ns" exec "$pg_pod" -- \
-        psql -U postgres -d "$db" -c "\dn" \
-        -c "SELECT schemaname, relname, n_live_tup
-            FROM pg_stat_user_tables
-            WHERE schemaname='trakrf'
-            ORDER BY relname;" || echo "(${db} not present at target time)"
-    done
+    echo
+    echo "==== trakrf: schema rowcounts ===="
+    kubectl -n "$ns" exec "$pg_pod" -- \
+      psql -U postgres -d trakrf -c "\dn" \
+      -c "SELECT schemaname, relname, n_live_tup
+          FROM pg_stat_user_tables
+          WHERE schemaname='trakrf'
+          ORDER BY relname;"
 
     echo
     echo "Tearing down scratch cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --wait=true
-    echo "PITR restore proof complete."
+    echo "PITR restore proof complete for {{ ENV }} (source ${src_cluster})."
 
 # Interactive psql on the CNPG primary. Superuser via in-pod peer auth.
 #   just psql preview
