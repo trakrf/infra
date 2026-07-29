@@ -591,6 +591,33 @@ db-restore-pitr-test ENV TARGET_TIME="":
       target_block=$'\n      recoveryTarget:\n        targetTime: "{{ TARGET_TIME }}"'
     fi
 
+    # Best-effort cleanup on ANY exit once the scratch Cluster has actually
+    # been applied, so a mid-run failure (Ready timeout, either psql exec)
+    # never leaves it running in trakrf-system — holding a PVC and node
+    # capacity — until someone notices or the next invocation's pre-delete
+    # step happens to clean it up. Installed only after `kubectl apply`
+    # succeeds, so an earlier abort (bucket/GSA resolution) never tries to
+    # delete a cluster that was never created.
+    #
+    # --wait=false here (fire-and-forget): a CNPG Cluster delete can take a
+    # while to fully drain, and a trap that blocks for minutes on an
+    # already-failed run just compounds the problem. The success path below
+    # still does its normal --wait=true teardown so the operator sees a
+    # clean finish; this trap only has to fire on the failure paths, where
+    # "delete requested" is enough. The drop itself is best-effort: a
+    # failure here only warns, it must never mask the recipe's real exit
+    # status, which is captured up front and re-asserted via `exit`.
+    scratch_applied=0
+    cleanup() {
+        local status=$?
+        if [ "$scratch_applied" = "1" ]; then
+            echo "Cleaning up scratch cluster ${scratch} (best-effort, not waiting)..."
+            kubectl -n "$ns" delete cluster "$scratch" --ignore-not-found --wait=false \
+              || echo "WARNING: failed to delete scratch cluster ${scratch} in ${ns} — delete it manually" >&2
+        fi
+        exit "$status"
+    }
+
     echo "Applying scratch Cluster ${scratch} pointing at gs://${bucket}/${src_cluster} ..."
     cat <<EOF | kubectl apply -f -
     apiVersion: postgresql.cnpg.io/v1
@@ -627,6 +654,8 @@ db-restore-pitr-test ENV TARGET_TIME="":
             wal:
               compression: gzip
     EOF
+    scratch_applied=1
+    trap cleanup EXIT
 
     echo "Waiting up to 10 min for scratch cluster to become Ready..."
     kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout=10m
@@ -649,6 +678,7 @@ db-restore-pitr-test ENV TARGET_TIME="":
     echo
     echo "Tearing down scratch cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --wait=true
+    scratch_applied=0
     echo "PITR restore proof complete for {{ ENV }} (source ${src_cluster})."
 
 # Interactive psql on the CNPG primary. Superuser via in-pod peer auth.
