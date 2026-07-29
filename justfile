@@ -694,14 +694,56 @@ db-restore-pitr-test ENV TARGET_TIME="":
     echo "==== databases in recovered cluster ===="
     kubectl -n "$ns" exec "$pg_pod" -- psql -U postgres -c "\l"
 
+    # NOTE: deliberately NOT pg_stat_user_tables.n_live_tup here. It is a
+    # stats-collector counter, not part of the physical backup, and reads 0
+    # right after any physical restore until autovacuum/ANALYZE repopulates
+    # it — which is why an earlier version of this check reported "all
+    # zero" on a restore that had, in fact, fully succeeded. pg_class.reltuples
+    # is a regular catalog column updated by ANALYZE via a normal WAL-logged
+    # UPDATE, so it IS part of the physical backup/recovery stream and
+    # survives a PITR intact (it is an estimate, and -1/NULL for a table
+    # that has never been analyzed — not evidence of emptiness by itself).
     echo
-    echo "==== trakrf: schema rowcounts ===="
+    echo "==== trakrf: schema + catalog row-count overview (pg_class.reltuples) ===="
     kubectl -n "$ns" exec "$pg_pod" -- \
       psql -U postgres -d trakrf -c "\dn" \
-      -c "SELECT schemaname, relname, n_live_tup
-          FROM pg_stat_user_tables
-          WHERE schemaname='trakrf'
-          ORDER BY relname;"
+      -c "SELECT n.nspname AS schemaname, c.relname,
+                 CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS est_rows
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'trakrf' AND c.relkind = 'r'
+          ORDER BY c.relname;"
+
+    echo
+    echo "==== trakrf: exact row counts on representative tables ===="
+    kubectl -n "$ns" exec "$pg_pod" -- \
+      psql -U postgres -d trakrf -c \
+        "SELECT 'organizations' AS table_name, count(*) FROM trakrf.organizations
+         UNION ALL
+         SELECT 'users', count(*) FROM trakrf.users;"
+
+    # Emptiness gate: judged on the trakrf schema AS A WHOLE (total tables +
+    # total estimated rows), never on any single table, so a legitimately
+    # empty table today (tag_scans/asset_scans — a known ingestion gap,
+    # TRA-900) can never trip a false alarm on its own. A restore that comes
+    # back with zero tables, or with every table's row estimate at zero,
+    # did not bring back real data and must fail loudly rather than report
+    # a hollow success.
+    read -r restored_table_count restored_reltuples_sum <<< "$(kubectl -n "$ns" exec "$pg_pod" -- \
+      psql -U postgres -d trakrf -t -A -F' ' -c \
+        "SELECT count(*), coalesce(sum(GREATEST(c.reltuples::bigint, 0)), 0)
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'trakrf' AND c.relkind = 'r';")"
+
+    echo
+    echo "==== emptiness check: ${restored_table_count:-0} tables, ~${restored_reltuples_sum:-0} total estimated rows in trakrf schema ===="
+    if [ "${restored_table_count:-0}" -eq 0 ] || [ "${restored_reltuples_sum:-0}" -eq 0 ]; then
+      echo "FAIL: restored trakrf schema looks EMPTY (0 tables, or 0 total estimated rows across all tables)." >&2
+      echo "This is not a passing PITR proof — it did not verify real data landed." >&2
+      exit 1
+    fi
+    echo "PASS: trakrf schema restored with ${restored_table_count} tables and real (non-zero) data."
 
     echo
     echo "Tearing down scratch cluster..."
