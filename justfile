@@ -729,17 +729,49 @@ db-restore-pitr-test ENV TARGET_TIME="":
     # back with zero tables, or with every table's row estimate at zero,
     # did not bring back real data and must fail loudly rather than report
     # a hollow success.
-    read -r restored_table_count restored_reltuples_sum <<< "$(kubectl -n "$ns" exec "$pg_pod" -- \
+    #
+    # "The check could not RUN" and "the restore is genuinely EMPTY" are two
+    # different findings and must never be reported as the same thing. The
+    # old `read -r a b <<< "$(...)"` shape conflated them: `set -e` does not
+    # fire on a command substitution feeding a here-string, and `read`
+    # against a here-string succeeds even when the string is empty — so one
+    # transient connection drop or statement timeout produced empty stdout,
+    # `${var:-0}` defaulted both fields to 0, and a perfectly healthy restore
+    # was announced to the operator as EMPTY. During a recovery incident that
+    # is the most expensive possible wrong answer. Capture first, check the
+    # exit status, validate the shape, and only then judge emptiness.
+    if ! gate_out=$(kubectl -n "$ns" exec "$pg_pod" -- \
       psql -U postgres -d trakrf -t -A -F' ' -c \
         "SELECT count(*), coalesce(sum(GREATEST(c.reltuples::bigint, 0)), 0)
          FROM pg_class c
          JOIN pg_namespace n ON n.oid = c.relnamespace
-         WHERE n.nspname = 'trakrf' AND c.relkind = 'r';")"
+         WHERE n.nspname = 'trakrf' AND c.relkind = 'r';"); then
+      echo >&2
+      echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query could not be RUN." >&2
+      echo "The restore itself may be perfectly fine; this failure is about the check," >&2
+      echo "not about the data. Do NOT read this as an empty restore." >&2
+      echo "Re-run it by hand against the scratch cluster before concluding anything:" >&2
+      echo "  kubectl -n ${ns} exec ${pg_pod} -- psql -U postgres -d trakrf -c \"\\dt trakrf.*\"" >&2
+      exit 1
+    fi
+
+    # A zero exit with empty or unparseable output is likewise "could not
+    # determine", not "empty": both fields must be present and numeric before
+    # the emptiness verdict below is allowed to mean anything.
+    read -r restored_table_count restored_reltuples_sum <<< "$gate_out"
+    if ! [[ "$restored_table_count" =~ ^[0-9]+$ ]] || ! [[ "$restored_reltuples_sum" =~ ^[0-9]+$ ]]; then
+      echo >&2
+      echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query returned no usable output." >&2
+      echo "It exited 0 but did not produce the expected '<tables> <est_rows>' pair, so the" >&2
+      echo "check could not be evaluated. This is NOT evidence of an empty restore." >&2
+      echo "Raw output was: [${gate_out}]" >&2
+      exit 1
+    fi
 
     echo
-    echo "==== emptiness check: ${restored_table_count:-0} tables, ~${restored_reltuples_sum:-0} total estimated rows in trakrf schema ===="
-    if [ "${restored_table_count:-0}" -eq 0 ] || [ "${restored_reltuples_sum:-0}" -eq 0 ]; then
-      echo "FAIL: restored trakrf schema looks EMPTY (0 tables, or 0 total estimated rows across all tables)." >&2
+    echo "==== emptiness check: ${restored_table_count} tables, ~${restored_reltuples_sum} total estimated rows in trakrf schema ===="
+    if [ "$restored_table_count" -eq 0 ] || [ "$restored_reltuples_sum" -eq 0 ]; then
+      echo "FAIL: the check RAN and the restored trakrf schema is EMPTY (0 tables, or 0 total estimated rows across all tables)." >&2
       echo "This is not a passing PITR proof — it did not verify real data landed." >&2
       exit 1
     fi
