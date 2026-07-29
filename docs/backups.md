@@ -279,17 +279,25 @@ written since the source's last base backup, so how long the recipe
 waits for the scratch cluster to reach Ready depends entirely on how
 much WAL has piled up since then — not on dataset size.
 
-Measured on preview 2026-07-29 22:24 UTC: **1,193 WAL segments / 5.14
-GB** accumulated in 5h11m since the prior base backup
-(`20260729T171320`) — roughly **1 GB of WAL per hour**, driven by live
-MQTT scan ingestion. That run did not finish inside the previous 20m
-wait. Base backups run once daily at 09:30 UTC, so the worst case is
-late in the day, just before the next one: close to 24h of
-accumulation at ~1 GB/hour is on the order of **~24 GB of WAL** to
-fetch and replay. The recipe's default wait
-(`RESTORE_READY_TIMEOUT`, 120m) is sized with headroom above a
-straight-line extrapolation from the measured case. Prod's WAL volume
-is comparatively negligible (15 objects / 5 MB in 13h in the same
+Crucially, that pile-up is **not** driven by steady-state ingestion.
+Measured on preview 2026-07-29: steady-state WAL is only **~21 MB per
+hour** — and that baseline already includes live MQTT scan ingestion,
+ambient tag reads, continuous BLE reads, and the continuous-aggregate
+refresh policy. A full day of that is roughly 0.5 GB, which replays
+quickly.
+
+What actually inflates it is `just db-restore-test <env>`, which writes
+a full logical restore into a scratch database on the live primary.
+Each run burst **~1.4–1.7 GB of compressed WAL** on preview. Three runs
+in one session left **~5.1 GB** to replay, and that — not elapsed time
+— is what exhausted the previous 20m wait. See
+[Interaction with db-restore-test](#interaction-with-db-restore-test)
+below.
+
+The default wait (`RESTORE_READY_TIMEOUT`, 120m) is therefore sized to
+absorb several preceding logical-proof runs plus base-backup fetch and
+instance startup, rather than to cover elapsed clock time. Prod's WAL
+volume is negligible (15 objects / 5 MB in 13h in the same
 measurement) and finishes in a few minutes regardless of this default.
 
 Override the wait with the `RESTORE_READY_TIMEOUT` env var (e.g.
@@ -301,8 +309,10 @@ wait.
 
 Two ways to make a **preview** proof fast instead of slow-but-honest:
 
-- Run it shortly after the daily 09:30 UTC scheduled base backup,
-  while little WAL has accumulated yet.
+- Run it **before** `just db-restore-test <env>`, not after. Ordering
+  matters far more than time of day: steady-state WAL is ~21 MB/hour,
+  so waiting for the next scheduled base backup saves little, while
+  each preceding logical proof adds ~1.4–1.7 GB to replay.
 - Pass a `TARGET_TIME` close to the most recent base backup's
   timestamp. CNPG picks the closest backup completed before that
   target and stops WAL replay at the target, so this bounds replay

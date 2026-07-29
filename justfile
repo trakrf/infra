@@ -873,20 +873,27 @@ db-restore-pitr-test ENV TARGET_TIME="":
     #
     # Recovering to LATEST replays every WAL segment since the source's
     # last base backup, so wait time scales with how much WAL has piled up
-    # since then, not with dataset size. Measured on preview 2026-07-29
-    # 22:24 UTC: 1,193 WAL segments / 5.14 GB accumulated in 5h11m since
-    # the prior base backup (20260729T171320) — roughly 1 GB/hour, driven
-    # by live MQTT scan ingestion. That run did NOT finish inside the
-    # previous 20m budget. Base backups run once daily (09:30 UTC), so the
-    # worst case is late in the day, just before the next one: close to
-    # 24h of accumulation at ~1 GB/hour is on the order of ~24 GB of WAL to
-    # fetch and replay, on top of the base backup restore itself — roughly
-    # 4-5x the WAL volume of the run that already blew through 20m. 120m
-    # is chosen to sit well above a straight-line extrapolation from that
-    # measurement, with margin left for base-backup-fetch and instance
-    # startup overhead on top of WAL replay. Prod is comparatively instant
-    # (15 WAL objects / 5 MB in 13h in the same measurement) and finishes
-    # in a few minutes regardless of this default.
+    # since then, not with dataset size.
+    #
+    # What actually drives that pile-up is NOT steady-state ingestion.
+    # Measured on preview 2026-07-29: steady-state WAL is ~21 MB/hour
+    # (pg_current_wal_lsn() delta over 60s, corroborated by ~6 archived WAL
+    # objects / ~0.01 GB per 30-minute bucket) — and that baseline already
+    # includes live MQTT scan ingestion, ambient tag reads, continuous BLE
+    # reads, and the continuous-aggregate refresh policy. A full day of that
+    # is only ~0.5 GB.
+    #
+    # The real driver is `just db-restore-test <env>`, which writes a full
+    # logical restore into a scratch DB on the live primary. Each run burst
+    # ~1.4-1.7 GB of compressed WAL on preview (300-380 archived objects in
+    # the surrounding 30-minute window). Three runs in one session left
+    # ~5.1 GB to replay, which is what blew through the previous 20m budget
+    # — not the clock. See docs/backups.md for the ordering guidance.
+    #
+    # 120m therefore buys headroom for several preceding logical-proof runs
+    # plus base-backup fetch and instance startup, rather than for elapsed
+    # time. Prod is comparatively instant (15 WAL objects / 5 MB in 13h in
+    # the same measurement) and finishes in a few minutes regardless.
     #
     # Must be a duration kubectl understands (e.g. 20m, 90m, 2h). A
     # malformed value must not silently become a zero (immediate timeout)
@@ -901,16 +908,16 @@ db-restore-pitr-test ENV TARGET_TIME="":
 
     echo "Waiting up to ${ready_timeout} for scratch cluster to become Ready." \
          "Recovery time here scales with how much WAL has accumulated since" \
-         "the source's last base backup, not with dataset size: preview takes" \
-         "live MQTT scan ingestion and accumulates roughly 1 GB of WAL per" \
-         "hour, so late in the day — just before the next 09:30 UTC scheduled" \
-         "base backup — a recover-to-latest run can be replaying on the order" \
-         "of ~24 GB of WAL. That is a slow-but-progressing restore, not a" \
-         "hang. Prod's WAL volume is comparatively negligible and finishes in" \
-         "a few minutes. To make a preview run fast instead: run it shortly" \
-         "after the 09:30 UTC base backup, or pass a TARGET_TIME close to the" \
-         "most recent base backup to bound replay instead of chasing latest" \
-         "(see docs/backups.md)."
+         "the source's last base backup, not with dataset size. Steady-state" \
+         "WAL is small (~21 MB/hour on preview, ingestion and all); what" \
+         "actually inflates it is a prior 'just db-restore-test {{ ENV }}'," \
+         "which bursts ~1.4-1.7 GB per run. If you ran the logical proof" \
+         "first, expect a long replay here — that is a slow-but-progressing" \
+         "restore, not a hang. Prod's WAL volume is negligible and finishes" \
+         "in a few minutes. To make a preview run fast: run it BEFORE the" \
+         "logical proof, shortly after the 09:30 UTC base backup, or pass a" \
+         "TARGET_TIME close to the most recent base backup to bound replay" \
+         "instead of chasing latest (see docs/backups.md)."
     if ! kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout="${ready_timeout}"; then
       echo "Scratch cluster ${scratch} did not become Ready in time." >&2
       echo "Before the cleanup trap deletes it, inspect the recovery job's logs:" >&2
