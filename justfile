@@ -719,10 +719,29 @@ db-pitr-trigger-base ENV:
 #
 # Idempotent: pre-deletes any leftover scratch cluster before applying.
 #
+# Recovering to latest (the default, no TARGET_TIME) replays every WAL
+# segment written since the source's last base backup, so how long this
+# takes depends entirely on how much WAL has piled up since then — see the
+# RESTORE_READY_TIMEOUT reasoning further down. Two ways to make a preview
+# run fast instead of slow-but-honest:
+#   - Run it shortly after the daily 09:30 UTC scheduled base backup, while
+#     little WAL has accumulated yet.
+#   - Pass a TARGET_TIME close to the most recent base backup's timestamp:
+#     CNPG picks the closest backup completed before that target and stops
+#     replay AT the target, so this bounds replay instead of chasing
+#     latest — it does not depend on how much WAL has piled up since.
+# Taking a fresh base backup first (`just db-pitr-trigger-base`) is NOT a
+# shortcut: that recipe itself takes ~18 minutes to complete.
+#
+# The Ready-wait timeout is overridable via RESTORE_READY_TIMEOUT — see
+# below — rather than a third positional argument, so it can't collide
+# with ENV/TARGET_TIME ordering.
+#
 # Usage:
 #   just db-restore-pitr-test preview
 #   just db-restore-pitr-test prod
 #   just db-restore-pitr-test prod "2026-05-27T10:30:00Z"
+#   RESTORE_READY_TIMEOUT=3h just db-restore-pitr-test preview
 db-restore-pitr-test ENV TARGET_TIME="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -846,14 +865,53 @@ db-restore-pitr-test ENV TARGET_TIME="":
     scratch_applied=1
     trap cleanup EXIT
 
-    # 20m, not 10m: a real restore replays a full base backup plus WAL, and
-    # that alone has measured ~18 minutes on this cluster once storage is
-    # sized correctly — a multi-minute wait here is normal and healthy, not
-    # a hang.
-    echo "Waiting up to 20 min for scratch cluster to become Ready. Restoring a" \
-         "multi-GB base backup and replaying WAL can genuinely take most of" \
-         "that — a slow-but-progressing restore is expected, not a hang."
-    if ! kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout=20m; then
+    # RESTORE_READY_TIMEOUT overrides how long we wait for the scratch
+    # cluster to become Ready. It's an env var, not a third positional
+    # arg, so it can't collide with ENV/TARGET_TIME ordering, and it needs
+    # no justfile edit to change — same shape as YES=1 for confirm_prod in
+    # scripts/ops-lib.sh.
+    #
+    # Recovering to LATEST replays every WAL segment since the source's
+    # last base backup, so wait time scales with how much WAL has piled up
+    # since then, not with dataset size. Measured on preview 2026-07-29
+    # 22:24 UTC: 1,193 WAL segments / 5.14 GB accumulated in 5h11m since
+    # the prior base backup (20260729T171320) — roughly 1 GB/hour, driven
+    # by live MQTT scan ingestion. That run did NOT finish inside the
+    # previous 20m budget. Base backups run once daily (09:30 UTC), so the
+    # worst case is late in the day, just before the next one: close to
+    # 24h of accumulation at ~1 GB/hour is on the order of ~24 GB of WAL to
+    # fetch and replay, on top of the base backup restore itself — roughly
+    # 4-5x the WAL volume of the run that already blew through 20m. 120m
+    # is chosen to sit well above a straight-line extrapolation from that
+    # measurement, with margin left for base-backup-fetch and instance
+    # startup overhead on top of WAL replay. Prod is comparatively instant
+    # (15 WAL objects / 5 MB in 13h in the same measurement) and finishes
+    # in a few minutes regardless of this default.
+    #
+    # Must be a duration kubectl understands (e.g. 20m, 90m, 2h). A
+    # malformed value must not silently become a zero (immediate timeout)
+    # or unbounded wait, so it's validated and falls back to the default
+    # — loudly — instead.
+    default_ready_timeout="120m"
+    ready_timeout="${RESTORE_READY_TIMEOUT:-$default_ready_timeout}"
+    if ! [[ "$ready_timeout" =~ ^[0-9]+(s|m|h)$ ]]; then
+      echo "WARNING: RESTORE_READY_TIMEOUT='${ready_timeout}' is not a valid duration (expected e.g. 20m, 90m, 2h) — using default ${default_ready_timeout}." >&2
+      ready_timeout="$default_ready_timeout"
+    fi
+
+    echo "Waiting up to ${ready_timeout} for scratch cluster to become Ready." \
+         "Recovery time here scales with how much WAL has accumulated since" \
+         "the source's last base backup, not with dataset size: preview takes" \
+         "live MQTT scan ingestion and accumulates roughly 1 GB of WAL per" \
+         "hour, so late in the day — just before the next 09:30 UTC scheduled" \
+         "base backup — a recover-to-latest run can be replaying on the order" \
+         "of ~24 GB of WAL. That is a slow-but-progressing restore, not a" \
+         "hang. Prod's WAL volume is comparatively negligible and finishes in" \
+         "a few minutes. To make a preview run fast instead: run it shortly" \
+         "after the 09:30 UTC base backup, or pass a TARGET_TIME close to the" \
+         "most recent base backup to bound replay instead of chasing latest" \
+         "(see docs/backups.md)."
+    if ! kubectl -n "$ns" wait --for=condition=Ready cluster/${scratch} --timeout="${ready_timeout}"; then
       echo "Scratch cluster ${scratch} did not become Ready in time." >&2
       echo "Before the cleanup trap deletes it, inspect the recovery job's logs:" >&2
       echo "  kubectl -n ${ns} logs -l cnpg.io/jobRole=full-recovery --tail=50" >&2
