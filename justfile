@@ -519,13 +519,35 @@ db-restore-test ENV:
         -c "SELECT timescaledb_post_restore()"
 
     echo "Sanity check — schema + table row counts:"
+    # Hypertables are listed SEPARATELY, with exact counts. A TimescaleDB
+    # hypertable keeps its rows in chunk relations under _timescaledb_internal,
+    # so the parent relation reports n_live_tup = 0 forever. Listing the
+    # parents alongside the plain tables therefore printed "asset_scans 0"
+    # directly above a PASS, which an operator reads as "the time-series data
+    # did not come back" when in fact ~16.8M rows did. Splitting them out is
+    # the difference between a report and a misleading report.
     kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 \
         -c "\dn" \
-        -c "SELECT schemaname, relname, n_live_tup
-            FROM pg_stat_user_tables
-            WHERE schemaname = 'trakrf'
-            ORDER BY relname;"
+        -c "WITH ht AS (
+                SELECT format('%I.%I', hypertable_schema, hypertable_name) AS qualname,
+                       hypertable_name AS relname,
+                       format('%I.%I', hypertable_schema, hypertable_name)::regclass::oid AS reloid
+                  FROM timescaledb_information.hypertables
+                 WHERE hypertable_schema = 'trakrf'
+            )
+            SELECT 'hypertable' AS kind, ht.relname, ht.qualname AS relation,
+                   (xpath('/row/c/text()',
+                     query_to_xml(format('SELECT count(*) AS c FROM %s', ht.qualname),
+                                  false, true, '')))[1]::text::bigint AS rows
+              FROM ht
+            UNION ALL
+            SELECT 'table', s.relname, format('%I.%I', s.schemaname, s.relname),
+                   GREATEST(s.n_live_tup, 0)
+              FROM pg_stat_user_tables s
+             WHERE s.schemaname = 'trakrf'
+               AND s.relid NOT IN (SELECT reloid FROM ht)
+             ORDER BY 1, 2;"
 
     # Emptiness gate — printing rowcounts is not proving them. Without this,
     # a dump that restores cleanly but carries no data (schema-only dump, a
@@ -533,18 +555,45 @@ db-restore-test ENV:
     # result table and still exits 0 with "Restore proof complete", which is
     # exactly the hollow-success bug the sibling PITR recipe already closed.
     #
-    # `pg_stat_user_tables.n_live_tup` IS the right source here, unlike in
-    # db-restore-pitr-test: this data arrives via pg_restore INSERTs into a
-    # live, running cluster, so the statistics collector genuinely counts the
-    # rows. (In the PITR recipe the data arrives as a physical base backup
-    # that does not carry collector state, so it must use pg_class.reltuples
-    # there. The asymmetry is deliberate — do not unify the two queries.)
+    # `pg_stat_user_tables.n_live_tup` IS the right source for the PLAIN
+    # tables here, unlike in db-restore-pitr-test: this data arrives via
+    # pg_restore INSERTs into a live, running cluster, so the statistics
+    # collector genuinely counts the rows. (In the PITR recipe the data
+    # arrives as a physical base backup that does not carry collector state,
+    # so it must read catalog data — pg_class.reltuples plus
+    # approximate_row_count() — there. The asymmetry is deliberate — do not
+    # unify the two queries.)
     #
-    # Judged on the trakrf schema AS A WHOLE (total tables + total live
-    # rows), never per-table, so a legitimately empty table (tag_scans /
-    # asset_scans — known ingestion gap, TRA-900) can never trip a false
-    # alarm, and so the gate stays schema-agnostic across preview (28
-    # tables) and prod (15 tables, 28 migrations behind).
+    # HYPERTABLES must be counted separately, and that is the whole point of
+    # TRA-1059. trakrf.asset_scans and trakrf.tag_scans are TimescaleDB
+    # hypertables whose rows live in chunk relations under
+    # _timescaledb_internal, so the hypertable PARENT reports 0 in BOTH
+    # n_live_tup and reltuples. Summing only the parents scored preview at
+    # ~242k rows when the database actually held ~16.8M — about 1.4% of the
+    # truth — so a restore that lost EVERY chunk would still have passed this
+    # gate. That is the same false-green class the gate exists to prevent, one
+    # layer deeper, and the data it was hiding is the product's core
+    # time-series data: the single most important thing to verify.
+    #
+    # Summing chunk relations' n_live_tup was the cheap candidate fix and it
+    # undercounts too: tag_scans is compressed on preview (5 of 8 chunks), and
+    # a compressed chunk's relation stores roughly one row per 1000 source
+    # rows. Exact count(*) is both honest and cheap here — measured 1.2s for
+    # 16.6M rows on the preview cluster, a parallel seq scan — so this gate
+    # counts hypertables exactly. query_to_xml is the standard pure-SQL way to
+    # run a dynamic count without creating a helper function in the scratch DB.
+    #
+    # Hypertables are DISCOVERED from timescaledb_information.hypertables and
+    # never hardcoded, so this keeps working across preview (28 tables) and
+    # prod (15 tables, 28 migrations behind) and across any future migration
+    # that adds or removes a hypertable. The timescaledb extension is already a
+    # hard dependency of this recipe (see the pre_restore/post_restore
+    # bracketing above), so leaning on its catalog views adds no new one.
+    #
+    # Judged on the trakrf schema AS A WHOLE (total tables + total rows),
+    # never per-table, so a legitimately empty table (prod's tag_scans is 0
+    # rows with 0 chunks today; ingestion gap TRA-900) can never trip a false
+    # alarm, and so the gate stays schema-agnostic across both envs.
     #
     # "The check could not RUN" and "the restore is genuinely EMPTY" are
     # different findings and must never be reported as the same thing:
@@ -558,9 +607,26 @@ db-restore-test ENV:
     # way and the real exit status is preserved.
     if ! gate_out=$(kubectl -n "$ns" exec "${pg_pod}" -- \
       psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 -t -A -F' ' \
-        -c "SELECT count(*), coalesce(sum(GREATEST(n_live_tup, 0)), 0)
-            FROM pg_stat_user_tables
-            WHERE schemaname = 'trakrf';"); then
+        -c "WITH ht AS (
+                SELECT format('%I.%I', hypertable_schema, hypertable_name) AS qualname,
+                       format('%I.%I', hypertable_schema, hypertable_name)::regclass::oid AS reloid
+                  FROM timescaledb_information.hypertables
+                 WHERE hypertable_schema = 'trakrf'
+            ), ht_rows AS (
+                SELECT count(*) AS n_tables,
+                       coalesce(sum((xpath('/row/c/text()',
+                         query_to_xml(format('SELECT count(*) AS c FROM %s', qualname),
+                                      false, true, '')))[1]::text::bigint), 0) AS n_rows
+                  FROM ht
+            ), plain AS (
+                SELECT count(*) AS n_tables,
+                       coalesce(sum(GREATEST(s.n_live_tup, 0)), 0) AS n_rows
+                  FROM pg_stat_user_tables s
+                 WHERE s.schemaname = 'trakrf'
+                   AND s.relid NOT IN (SELECT reloid FROM ht)
+            )
+            SELECT plain.n_tables, plain.n_rows, ht_rows.n_tables, ht_rows.n_rows
+              FROM plain, ht_rows;"); then
       echo >&2
       echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query could not be RUN." >&2
       echo "The restore itself may be perfectly fine; this failure is about the check," >&2
@@ -571,25 +637,36 @@ db-restore-test ENV:
 
     # A zero exit with empty or unparseable output is likewise "could not
     # determine", not "empty".
-    read -r restored_table_count restored_live_rows <<< "$gate_out"
-    if ! [[ "$restored_table_count" =~ ^[0-9]+$ ]] || ! [[ "$restored_live_rows" =~ ^[0-9]+$ ]]; then
+    read -r plain_tables plain_rows ht_tables ht_rows <<< "$gate_out"
+    if ! [[ "$plain_tables" =~ ^[0-9]+$ ]] || ! [[ "$plain_rows" =~ ^[0-9]+$ ]] \
+       || ! [[ "$ht_tables" =~ ^[0-9]+$ ]] || ! [[ "$ht_rows" =~ ^[0-9]+$ ]]; then
       echo >&2
       echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query returned no usable output." >&2
-      echo "It exited 0 but did not produce the expected '<tables> <live_rows>' pair, so the" >&2
+      echo "It exited 0 but did not produce the expected" >&2
+      echo "'<plain_tables> <plain_rows> <hypertables> <hypertable_rows>' quad, so the" >&2
       echo "check could not be evaluated. This is NOT evidence of an empty restore." >&2
       echo "Raw output was: [${gate_out}]" >&2
       exit 1
     fi
 
+    # Totals decide the verdict; the split is what the operator needs to see.
+    # A hypertable row count of 0 while plain tables are populated is the exact
+    # shape of "the restore lost every chunk", so it must never hide inside a
+    # single aggregate number again.
+    restored_table_count=$(( plain_tables + ht_tables ))
+    restored_live_rows=$(( plain_rows + ht_rows ))
+
     echo
-    echo "==== emptiness check: ${restored_table_count} tables, ${restored_live_rows} total live rows in trakrf schema ===="
+    echo "==== emptiness check: ${restored_table_count} tables in trakrf schema (${plain_tables} plain + ${ht_tables} hypertable) ===="
+    echo "====   ${restored_live_rows} total rows: ${plain_rows} in plain tables + ${ht_rows} in hypertable chunks (exact count) ===="
     if [ "$restored_table_count" -eq 0 ] || [ "$restored_live_rows" -eq 0 ]; then
-      echo "FAIL: the check RAN and the restored trakrf schema is EMPTY (0 tables, or 0 total rows across all tables)." >&2
+      echo "FAIL: the check RAN and the restored trakrf schema is EMPTY (0 tables, or 0 total rows across all tables and hypertables)." >&2
       echo "This is not a passing restore proof — the dump did not bring back real data." >&2
       echo "Dump under test was: ${latest}" >&2
       exit 1
     fi
-    echo "PASS: trakrf schema restored with ${restored_table_count} tables and real (non-zero) data."
+    echo "PASS: trakrf schema restored with ${restored_table_count} tables and real (non-zero) data,"
+    echo "      including ${ht_rows} time-series rows across ${ht_tables} hypertable(s)."
 
     echo "Dropping scratch DB ${scratch}..."
     kubectl -n "$ns" exec "${pg_pod}" -- \
@@ -798,16 +875,38 @@ db-restore-pitr-test ENV TARGET_TIME="":
     # UPDATE, so it IS part of the physical backup/recovery stream and
     # survives a PITR intact (it is an estimate, and -1/NULL for a table
     # that has never been analyzed — not evidence of emptiness by itself).
+    #
+    # Hypertables are listed SEPARATELY via approximate_row_count(). Their rows
+    # live in chunk relations under _timescaledb_internal, so a hypertable
+    # PARENT's reltuples is always -1/0 no matter how much data recovered.
+    # Listing the parents next to the plain tables printed "asset_scans 0"
+    # right above a PASS, which an operator reads as "the time-series data did
+    # not come back" when in fact millions of rows did. approximate_row_count()
+    # aggregates the chunks' reltuples and consults
+    # _timescaledb_catalog.compression_chunk_size for compressed chunks — all
+    # ordinary WAL-logged catalog data, so it is as PITR-safe as reltuples
+    # itself, and it never scans the heap (measured 0.4s against 16.6M rows).
     echo
-    echo "==== trakrf: schema + catalog row-count overview (pg_class.reltuples) ===="
+    echo "==== trakrf: schema + catalog row-count overview (pg_class.reltuples / approximate_row_count) ===="
     kubectl -n "$ns" exec "$pg_pod" -- \
       psql -U postgres -d trakrf -c "\dn" \
-      -c "SELECT n.nspname AS schemaname, c.relname,
-                 CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS est_rows
+      -c "WITH ht AS (
+              SELECT format('%I.%I', hypertable_schema, hypertable_name)::regclass AS rel,
+                     hypertable_schema AS schemaname, hypertable_name AS relname
+                FROM timescaledb_information.hypertables
+               WHERE hypertable_schema = 'trakrf'
+          )
+          SELECT 'hypertable' AS kind, ht.schemaname, ht.relname,
+                 GREATEST(approximate_row_count(ht.rel), 0) AS est_rows
+            FROM ht
+          UNION ALL
+          SELECT 'table', n.nspname, c.relname,
+                 CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END
           FROM pg_class c
           JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'trakrf' AND c.relkind = 'r'
-          ORDER BY c.relname;"
+            AND c.oid NOT IN (SELECT rel::oid FROM ht)
+          ORDER BY 1, 3;"
 
     echo
     echo "==== trakrf: exact row counts on representative tables ===="
@@ -819,11 +918,39 @@ db-restore-pitr-test ENV TARGET_TIME="":
 
     # Emptiness gate: judged on the trakrf schema AS A WHOLE (total tables +
     # total estimated rows), never on any single table, so a legitimately
-    # empty table today (tag_scans/asset_scans — a known ingestion gap,
-    # TRA-900) can never trip a false alarm on its own. A restore that comes
-    # back with zero tables, or with every table's row estimate at zero,
-    # did not bring back real data and must fail loudly rather than report
-    # a hollow success.
+    # empty table today (prod's tag_scans is 0 rows with 0 chunks — a known
+    # ingestion gap, TRA-900) can never trip a false alarm on its own. A
+    # restore that comes back with zero tables, or with every table's row
+    # estimate at zero, did not bring back real data and must fail loudly
+    # rather than report a hollow success.
+    #
+    # HYPERTABLES are aggregated separately, and that is the whole point of
+    # TRA-1059. trakrf.asset_scans and trakrf.tag_scans are TimescaleDB
+    # hypertables whose rows live in chunk relations under
+    # _timescaledb_internal, so the hypertable PARENT's reltuples is always
+    # -1/0. Summing only relkind='r' relations in the trakrf schema scored
+    # preview at ~242k estimated rows when the database actually held ~16.8M —
+    # about 1.4% of the truth — so a PITR that recovered zero chunks would
+    # still have passed. That is the same false-green class this gate exists to
+    # prevent, one layer deeper, hiding the product's core time-series data.
+    #
+    # approximate_row_count() is the right instrument here for the same reason
+    # reltuples is: it is derived purely from catalog data (the chunks'
+    # reltuples, plus _timescaledb_catalog.compression_chunk_size's
+    # numrows_pre_compression for compressed chunks — every one of those
+    # relations is permanent and WAL-logged, verified on the live clusters), so
+    # it survives a physical restore exactly as reltuples does. It also never
+    # touches the heap, so it stays cheap on a 16.8M-row hypertable, unlike a
+    # count(*) — the opposite trade-off from the logical sibling recipe, which
+    # has a running stats collector and can afford exact counts.
+    #
+    # Hypertables are DISCOVERED from timescaledb_information.hypertables and
+    # never hardcoded, so this survives any future migration that adds or
+    # removes one, and works unchanged on prod's 15-table schema and preview's
+    # 28-table schema. The timescaledb extension is a hard dependency of the
+    # trakrf schema either way (it is loaded into template1 on this image), and
+    # if it ever went missing this query would fail to parse and report
+    # INCONCLUSIVE — a loud, safe answer, never a false PASS.
     #
     # "The check could not RUN" and "the restore is genuinely EMPTY" are two
     # different findings and must never be reported as the same thing. The
@@ -837,10 +964,24 @@ db-restore-pitr-test ENV TARGET_TIME="":
     # exit status, validate the shape, and only then judge emptiness.
     if ! gate_out=$(kubectl -n "$ns" exec "$pg_pod" -- \
       psql -U postgres -d trakrf -t -A -F' ' -c \
-        "SELECT count(*), coalesce(sum(GREATEST(c.reltuples::bigint, 0)), 0)
-         FROM pg_class c
-         JOIN pg_namespace n ON n.oid = c.relnamespace
-         WHERE n.nspname = 'trakrf' AND c.relkind = 'r';"); then
+        "WITH ht AS (
+             SELECT format('%I.%I', hypertable_schema, hypertable_name)::regclass AS rel
+               FROM timescaledb_information.hypertables
+              WHERE hypertable_schema = 'trakrf'
+         ), ht_rows AS (
+             SELECT count(*) AS n_tables,
+                    coalesce(sum(GREATEST(approximate_row_count(rel), 0)), 0) AS n_rows
+               FROM ht
+         ), plain AS (
+             SELECT count(*) AS n_tables,
+                    coalesce(sum(GREATEST(c.reltuples::bigint, 0)), 0) AS n_rows
+               FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'trakrf' AND c.relkind = 'r'
+                AND c.oid NOT IN (SELECT rel::oid FROM ht)
+         )
+         SELECT plain.n_tables, plain.n_rows, ht_rows.n_tables, ht_rows.n_rows
+           FROM plain, ht_rows;"); then
       echo >&2
       echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query could not be RUN." >&2
       echo "The restore itself may be perfectly fine; this failure is about the check," >&2
@@ -853,24 +994,35 @@ db-restore-pitr-test ENV TARGET_TIME="":
     # A zero exit with empty or unparseable output is likewise "could not
     # determine", not "empty": both fields must be present and numeric before
     # the emptiness verdict below is allowed to mean anything.
-    read -r restored_table_count restored_reltuples_sum <<< "$gate_out"
-    if ! [[ "$restored_table_count" =~ ^[0-9]+$ ]] || ! [[ "$restored_reltuples_sum" =~ ^[0-9]+$ ]]; then
+    read -r plain_tables plain_rows ht_tables ht_rows <<< "$gate_out"
+    if ! [[ "$plain_tables" =~ ^[0-9]+$ ]] || ! [[ "$plain_rows" =~ ^[0-9]+$ ]] \
+       || ! [[ "$ht_tables" =~ ^[0-9]+$ ]] || ! [[ "$ht_rows" =~ ^[0-9]+$ ]]; then
       echo >&2
       echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query returned no usable output." >&2
-      echo "It exited 0 but did not produce the expected '<tables> <est_rows>' pair, so the" >&2
-      echo "check could not be evaluated. This is NOT evidence of an empty restore." >&2
+      echo "It exited 0 but did not produce the expected" >&2
+      echo "'<plain_tables> <plain_est_rows> <hypertables> <hypertable_est_rows>' quad, so" >&2
+      echo "the check could not be evaluated. This is NOT evidence of an empty restore." >&2
       echo "Raw output was: [${gate_out}]" >&2
       exit 1
     fi
 
+    # Totals decide the verdict; the split is what the operator needs to see.
+    # A hypertable estimate of 0 while the plain tables are populated is the
+    # exact shape of "the recovery lost every chunk", so it must never hide
+    # inside a single aggregate number again.
+    restored_table_count=$(( plain_tables + ht_tables ))
+    restored_reltuples_sum=$(( plain_rows + ht_rows ))
+
     echo
-    echo "==== emptiness check: ${restored_table_count} tables, ~${restored_reltuples_sum} total estimated rows in trakrf schema ===="
+    echo "==== emptiness check: ${restored_table_count} tables in trakrf schema (${plain_tables} plain + ${ht_tables} hypertable) ===="
+    echo "====   ~${restored_reltuples_sum} total estimated rows: ~${plain_rows} in plain tables + ~${ht_rows} in hypertable chunks ===="
     if [ "$restored_table_count" -eq 0 ] || [ "$restored_reltuples_sum" -eq 0 ]; then
-      echo "FAIL: the check RAN and the restored trakrf schema is EMPTY (0 tables, or 0 total estimated rows across all tables)." >&2
+      echo "FAIL: the check RAN and the restored trakrf schema is EMPTY (0 tables, or 0 total estimated rows across all tables and hypertables)." >&2
       echo "This is not a passing PITR proof — it did not verify real data landed." >&2
       exit 1
     fi
-    echo "PASS: trakrf schema restored with ${restored_table_count} tables and real (non-zero) data."
+    echo "PASS: trakrf schema restored with ${restored_table_count} tables and real (non-zero) data,"
+    echo "      including ~${ht_rows} time-series rows across ${ht_tables} hypertable(s)."
 
     echo
     echo "Tearing down scratch cluster..."
