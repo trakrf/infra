@@ -439,8 +439,20 @@ db-restore-test ENV:
     #   gs://<bucket>/<cluster>/dump/YYYY/MM/DD/HHMM.pgdump
     # Zero-padded, so lexical sort puts the newest last.
     echo "Looking for latest dump in gs://${bucket}/${cluster}/dump/..."
-    latest=$(gcloud storage ls "gs://${bucket}/${cluster}/dump/**/*.pgdump" | sort | tail -1)
-    test -n "$latest" || { echo "no dumps found in gs://${bucket}/${cluster}/dump/"; exit 1; }
+    # `gcloud storage ls` EXITS 1 when the prefix matches nothing ("One or
+    # more URLs matched no objects"), and pipefail propagates that through
+    # `sort | tail`. A bare `latest=$(...)` therefore aborts the recipe under
+    # `set -e` before any `test -n "$latest"` guard can run, so the friendly
+    # message naming the bucket and prefix was unreachable. Capture the
+    # pipeline's status in the `if` instead, which keeps it reachable while
+    # still covering the "exited 0 but printed nothing" case.
+    # gcloud's own stderr is left visible above this message, so a real
+    # failure (expired ADC, wrong project) is still distinguishable.
+    if ! latest=$(gcloud storage ls "gs://${bucket}/${cluster}/dump/**/*.pgdump" | sort | tail -1) \
+       || [ -z "$latest" ]; then
+      echo "no dumps found in gs://${bucket}/${cluster}/dump/ (or the listing itself failed — see any gcloud error above)" >&2
+      exit 1
+    fi
     echo "Latest dump: $latest"
 
     tmp=$(mktemp -d)
@@ -514,6 +526,70 @@ db-restore-test ENV:
             FROM pg_stat_user_tables
             WHERE schemaname = 'trakrf'
             ORDER BY relname;"
+
+    # Emptiness gate — printing rowcounts is not proving them. Without this,
+    # a dump that restores cleanly but carries no data (schema-only dump, a
+    # dump of the wrong database, a truncated object) produces an empty
+    # result table and still exits 0 with "Restore proof complete", which is
+    # exactly the hollow-success bug the sibling PITR recipe already closed.
+    #
+    # `pg_stat_user_tables.n_live_tup` IS the right source here, unlike in
+    # db-restore-pitr-test: this data arrives via pg_restore INSERTs into a
+    # live, running cluster, so the statistics collector genuinely counts the
+    # rows. (In the PITR recipe the data arrives as a physical base backup
+    # that does not carry collector state, so it must use pg_class.reltuples
+    # there. The asymmetry is deliberate — do not unify the two queries.)
+    #
+    # Judged on the trakrf schema AS A WHOLE (total tables + total live
+    # rows), never per-table, so a legitimately empty table (tag_scans /
+    # asset_scans — known ingestion gap, TRA-900) can never trip a false
+    # alarm, and so the gate stays schema-agnostic across preview (28
+    # tables) and prod (15 tables, 28 migrations behind).
+    #
+    # "The check could not RUN" and "the restore is genuinely EMPTY" are
+    # different findings and must never be reported as the same thing:
+    # capture first, check the exit status, validate the shape, and only
+    # then judge emptiness. (`read -r a b <<< "$(cmd)"` cannot do this —
+    # `set -e` does not fire on a command substitution feeding a here-string,
+    # so a dropped connection would be announced as an empty restore.)
+    #
+    # This runs BEFORE the DROP DATABASE below, and a failure here still
+    # routes through the cleanup trap, so the scratch DB is dropped either
+    # way and the real exit status is preserved.
+    if ! gate_out=$(kubectl -n "$ns" exec "${pg_pod}" -- \
+      psql -U postgres -d "${scratch}" -v ON_ERROR_STOP=1 -t -A -F' ' \
+        -c "SELECT count(*), coalesce(sum(GREATEST(n_live_tup, 0)), 0)
+            FROM pg_stat_user_tables
+            WHERE schemaname = 'trakrf';"); then
+      echo >&2
+      echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query could not be RUN." >&2
+      echo "The restore itself may be perfectly fine; this failure is about the check," >&2
+      echo "not about the data. Do NOT read this as an empty restore." >&2
+      echo "The scratch DB is dropped on exit, so re-run the proof to re-check." >&2
+      exit 1
+    fi
+
+    # A zero exit with empty or unparseable output is likewise "could not
+    # determine", not "empty".
+    read -r restored_table_count restored_live_rows <<< "$gate_out"
+    if ! [[ "$restored_table_count" =~ ^[0-9]+$ ]] || ! [[ "$restored_live_rows" =~ ^[0-9]+$ ]]; then
+      echo >&2
+      echo "ERROR: INCONCLUSIVE — the emptiness sanity-check query returned no usable output." >&2
+      echo "It exited 0 but did not produce the expected '<tables> <live_rows>' pair, so the" >&2
+      echo "check could not be evaluated. This is NOT evidence of an empty restore." >&2
+      echo "Raw output was: [${gate_out}]" >&2
+      exit 1
+    fi
+
+    echo
+    echo "==== emptiness check: ${restored_table_count} tables, ${restored_live_rows} total live rows in trakrf schema ===="
+    if [ "$restored_table_count" -eq 0 ] || [ "$restored_live_rows" -eq 0 ]; then
+      echo "FAIL: the check RAN and the restored trakrf schema is EMPTY (0 tables, or 0 total rows across all tables)." >&2
+      echo "This is not a passing restore proof — the dump did not bring back real data." >&2
+      echo "Dump under test was: ${latest}" >&2
+      exit 1
+    fi
+    echo "PASS: trakrf schema restored with ${restored_table_count} tables and real (non-zero) data."
 
     echo "Dropping scratch DB ${scratch}..."
     kubectl -n "$ns" exec "${pg_pod}" -- \
@@ -598,7 +674,19 @@ db-restore-pitr-test ENV TARGET_TIME="":
     storage_size=$(kubectl -n "$src_ns" get cluster "$src_cluster" \
       -o jsonpath='{.spec.storage.size}')
     test -n "$storage_size" || { echo "could not resolve storage size from cluster ${src_cluster} in ${src_ns}"; exit 1; }
-    echo "Recovering ${src_cluster} from gs://${bucket}/${src_cluster} as ${gsa} (storage ${storage_size})"
+
+    # Postgres image likewise tracks the SOURCE cluster, not a literal, for
+    # the same reason the size does. A physical base backup can only be
+    # replayed by the same PG major version that wrote it: bump
+    # helm/trakrf-db/values.yaml to a PG 18 image and a pinned PG 17 scratch
+    # cluster refuses to start with "database files are incompatible with
+    # server", never reaches Ready, burns the full 20m timeout, and the
+    # cleanup trap deletes the evidence. Deriving it means the scratch
+    # cluster follows the source across any future major-version bump.
+    image_name=$(kubectl -n "$src_ns" get cluster "$src_cluster" \
+      -o jsonpath='{.spec.imageName}')
+    test -n "$image_name" || { echo "could not resolve imageName from cluster ${src_cluster} in ${src_ns}"; exit 1; }
+    echo "Recovering ${src_cluster} from gs://${bucket}/${src_cluster} as ${gsa} (storage ${storage_size}, image ${image_name})"
 
     echo "Pre-cleanup: deleting any leftover ${scratch} cluster..."
     kubectl -n "$ns" delete cluster "$scratch" --ignore-not-found --wait=true
@@ -644,9 +732,16 @@ db-restore-pitr-test ENV TARGET_TIME="":
       namespace: ${ns}
     spec:
       instances: 1
-      imageName: ghcr.io/clevyr/cloudnativepg-timescale:17.2-ts2.18
+      imageName: ${image_name}
       storage:
         size: ${storage_size}
+        # storageClass is deliberately NOT derived from the source cluster.
+        # Sources use premium-rwo-retain (Retain reclaim policy) so a deleted
+        # Cluster leaves its PV behind for recovery. This cluster is a
+        # throwaway proof torn down on every run, and a retained PV per run
+        # would silently accumulate orphaned disks and cost. premium-rwo is
+        # the same underlying disk type with Delete reclaim — the intended
+        # behaviour here, not an oversight.
         storageClass: premium-rwo
       affinity:
         tolerations:
