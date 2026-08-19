@@ -1095,18 +1095,58 @@ db-restore-pitr-test ENV TARGET_TIME="":
     scratch_applied=0
     echo "PITR restore proof complete for {{ ENV }} (source ${src_cluster})."
 
-# Interactive psql on the CNPG primary. Superuser via in-pod peer auth.
+# The session runs as trakrf-migrate, NOT the postgres superuser, so that
+# hand-run DDL is owned by the same role migrations run as. A postgres-owned
+# object in the trakrf schema is permanently un-replaceable by a later
+# migration (CREATE OR REPLACE, DROP and ALTER .. OWNER TO all need
+# ownership), which is what wedged preview deploys in TRA-1104. Use
+# `just psql-super` to opt into superuser deliberately.
+#
+# Interactive with no QUERY, one-shot `psql -c` with one.
 #   just psql preview
-#   just psql prod
-psql ENV:
+#   just psql prod "SELECT version, dirty FROM trakrf.schema_migrations;"
+psql ENV QUERY="":
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/ops-lib.sh
     require_env "{{ ENV }}"
     ns="trakrf-{{ ENV }}"
     pod=$(cnpg_primary_pod "$ns")
-    echo "→ $ns/$pod (database: trakrf)"
-    kubectl -n "$ns" exec -it "$pod" -c postgres -- psql -U postgres -d trakrf
+    # quote() rather than interpolating QUERY into a bare double-quoted
+    # assignment: just substitutes into the recipe body textually, so SQL
+    # containing a double quote (a quoted identifier such as
+    # "trakrf-migrate") would otherwise terminate the string and mangle the
+    # statement. quote() emits a properly single-quoted shell word, so
+    # embedded quotes, $ and backticks all survive verbatim.
+    #
+    # Do NOT write an interpolation of QUERY inside a comment here. just
+    # expands them in comments too, and a multi-line value then spills past
+    # the leading # and executes as shell.
+    query={{ quote(QUERY) }}
+    # Banner on stderr so `just psql ENV "SELECT .."` stays pipeable.
+    echo "→ $ns/$pod (database: trakrf, role: trakrf-migrate)" >&2
+    db_psql "$ns" "$pod" trakrf-migrate "$query"
+
+# Prefer `just psql` for everything except what genuinely needs superuser:
+# repairing ownership drift, and role/extension management. Any object you
+# CREATE in this session is owned by postgres and will block a future
+# migration — see the note on `psql` above. Prompts before prod.
+#
+# Superuser psql on the CNPG primary — deliberate opt-in.
+#   just psql-super preview
+#   YES=1 just psql-super prod 'ALTER FUNCTION f() OWNER TO "trakrf-migrate"'
+psql-super ENV QUERY="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    pod=$(cnpg_primary_pod "$ns")
+    query={{ quote(QUERY) }}
+    confirm_prod "{{ ENV }}" "open a SUPERUSER psql session (objects you create here are owned by postgres)"
+    echo "⚠️  SUPERUSER session on $ns/$pod — anything you CREATE is owned by" >&2
+    echo "   postgres and will block a future migration. Prefer 'just psql {{ ENV }}'." >&2
+    db_psql "$ns" "$pod" postgres "$query"
 
 # CNPG cluster health plus its instance pods.
 #   just db-status prod

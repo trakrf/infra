@@ -1,0 +1,9 @@
+{
+  "ticketPrefix": "TRA",
+  "tracker": "linear",
+  "baseBranch": "main",
+  "defaultType": "feat",
+  "validate": ".claude/csw-validate.sh",
+  "worktreeDir": ".claude/worktrees",
+  "branchPattern": "<type>/<ticket>-<slug>"
+}

@@ -25,7 +25,7 @@
 - Merge PRs with `--merge` (never `--squash` or `--rebase`)
 
 ## Worktrees
-- **Canonical location**: worktrees go in `.claude/worktrees/<name>/` (repo-relative), one per branch — gitignored as part of the `.claude/` ignore, and the same convention across all trakrf repos (docs/platform/infra). Since this repo ignores all of `.claude/`, this CLAUDE.md line is the only in-repo signal of the convention — keep it explicit.
+- **Canonical location**: worktrees go in `.claude/worktrees/<name>/` (repo-relative), one per branch — gitignored by the narrow `.claude/worktrees/` rule, and the same convention across all trakrf repos (docs/platform/infra). The ignore is deliberately narrow (matching trakrf/docs) so the rest of `.claude/` stays tracked and shared agent config is versioned: `.claude/csw.json` (csw workflow config — tracker, base branch, validate command) and `.claude/csw-validate.sh` (local mirror of `.github/workflows/ci.yml`; run it before opening a PR).
 - **Create** with the native `EnterWorktree` tool (writes to `.claude/worktrees/<name>`, auto-creates branch `worktree-<name>` — rename to a `feat/...`/`fix/...` branch after if desired). Do NOT use manual `git worktree add`, and do NOT create a `.worktrees/` dir or a `.claude/worktrees -> ../.worktrees` symlink (fresh-clone footgun). Manual `git worktree` is only the superpowers fallback for harnesses with no native tool — not us.
 - **Cleanup**: `git worktree list` is authoritative (empty leftover dirs are not worktrees); use `ExitWorktree` (or `git worktree remove`) to leave/remove.
 

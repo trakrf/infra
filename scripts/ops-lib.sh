@@ -91,3 +91,64 @@ cnpg_primary_pod() {
     fi
     echo "$pod"
 }
+
+# db_psql <namespace> <pod> <role> [query]
+# Run psql against the CNPG primary's `trakrf` database.
+#
+# Auth is always in-pod peer auth as the `postgres` superuser over the unix
+# socket — that is the only credential available without threading a password
+# in. What <role> controls is the role the SESSION then runs as:
+#
+#   trakrf-migrate  ->  PGOPTIONS='-c role=trakrf-migrate' makes the backend
+#                       apply the equivalent of SET ROLE at connect time, so
+#                       DDL typed in the session is owned by trakrf-migrate —
+#                       the role migrations run as, and therefore the only
+#                       owner that keeps an object replaceable by a later
+#                       migration (TRA-1105, after the TRA-1104 wedge).
+#   postgres        ->  no PGOPTIONS; a raw superuser session.
+#
+# This is a guardrail, not a security boundary: session_user is still the
+# postgres superuser, so `SET ROLE postgres` escapes it. Note that plain
+# `RESET ROLE` does NOT — the role arrived in the startup packet, so it is
+# the session default that RESET returns to. The point is that the DEFAULT
+# stops silently minting postgres-owned objects, not that escape is
+# impossible.
+#
+# An empty <query> opens an interactive shell (-it). A non-empty one runs
+# `psql -c` with ON_ERROR_STOP=1 and no tty (-i), so the output is clean
+# enough to pipe and a failing statement sets a non-zero exit status.
+db_psql() {
+    local ns="${1:-}" pod="${2:-}" role="${3:-}" query="${4:-}"
+
+    if [ -z "$ns" ]; then
+        echo "ERROR: db_psql requires a namespace" >&2
+        return 1
+    fi
+    if [ -z "$pod" ]; then
+        echo "ERROR: db_psql requires a pod" >&2
+        return 1
+    fi
+    if [ -z "$role" ]; then
+        echo "ERROR: db_psql requires a role" >&2
+        return 1
+    fi
+
+    # kubectl exec cannot set an environment variable on the remote process,
+    # so PGOPTIONS is applied by exec'ing through env(1) inside the container.
+    local -a role_env=()
+    if [ "$role" != "postgres" ]; then
+        role_env=(env "PGOPTIONS=-c role=$role")
+    fi
+
+    # ${arr[@]+"${arr[@]}"} — expanding an empty array as plain "${arr[@]}"
+    # is an unbound-variable error under `set -u` on bash before 4.4.
+    if [ -n "$query" ]; then
+        kubectl -n "$ns" exec -i "$pod" -c postgres -- \
+            ${role_env[@]+"${role_env[@]}"} \
+            psql -U postgres -d trakrf -v ON_ERROR_STOP=1 -c "$query"
+    else
+        kubectl -n "$ns" exec -it "$pod" -c postgres -- \
+            ${role_env[@]+"${role_env[@]}"} \
+            psql -U postgres -d trakrf
+    fi
+}

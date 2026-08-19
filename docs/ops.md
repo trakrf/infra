@@ -160,8 +160,9 @@ to a namespace that does not exist.
 **Guard rule.** Unguarded recipes (`pods`, `logs`, `rollout`, `db-status`,
 `psql`, `mqtt-logs`, `mqtt-sub`, `argo-status`) run against both
 environments with no confirmation prompt. That is not the same as
-read-only — `psql` in particular opens a superuser session that can write;
-see the note in §5. Mutating recipes (`backend-restart`, `set-log-level`)
+read-only — `psql` in particular opens a session that owns the schema and
+can write; see the note in §5. Mutating recipes (`backend-restart`,
+`set-log-level`, `psql-super`)
 prompt before touching prod: they print what they are about to do and
 require you to type `prod`. `argo-sync` prompts for every app **except**
 `*-preview` ones — that includes `*-prod` apps, but also the cluster-scoped
@@ -185,33 +186,88 @@ metacharacters.
 
 ## 5. Database
 
-### Interactive psql
+### psql
+
+Interactive with no `QUERY`, a one-shot `psql -c` with one:
 
 ```sh
 just psql preview
-just psql prod
+just psql prod "SELECT version, dirty FROM trakrf.schema_migrations;"
 ```
 
 Raw equivalent:
 
 ```sh
-kubectl -n trakrf-prod exec -it "$(kubectl -n trakrf-prod get pod -l cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}')" -c postgres -- psql -U postgres -d trakrf
+kubectl -n trakrf-prod exec -it "$(kubectl -n trakrf-prod get pod -l cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}')" -c postgres -- env PGOPTIONS='-c role=trakrf-migrate' psql -U postgres -d trakrf
 ```
 
 The primary is resolved by the `cnpg.io/instanceRole=primary` label rather
 than a fixed pod name, so it follows a failover automatically — you always
-land on whichever instance is currently primary. Auth is superuser via
-in-pod peer auth over the unix socket, so no password is involved. The
-database name is `trakrf` in both namespaces (the namespace is what
-separates the environments, not the database name).
+land on whichever instance is currently primary. The database name is
+`trakrf` in both namespaces (the namespace is what separates the
+environments, not the database name).
 
-> **`just psql prod` is not read-only.** It drops you into a superuser
-> session — `psql -U postgres -d trakrf` — that can insert, update, or drop
-> anything in the database. It runs unguarded, with no `confirm_prod`
-> prompt, because it opens a shell rather than performing one describable
-> operation `confirm_prod` could gate. The lack of a prompt reflects that,
-> not that the recipe is safe. Treat every statement you type inside it as
-> if it were already committed against production.
+**The session runs as `trakrf-migrate`, not as a superuser.** Connection auth
+is still in-pod peer auth as `postgres` over the unix socket — that is the
+only credential available without threading a password in — but `PGOPTIONS`
+applies the equivalent of `SET ROLE "trakrf-migrate"` at connect time, so
+anything you CREATE is owned by the same role migrations run as.
+
+This matters because a `postgres`-owned object in the `trakrf` schema is
+permanently un-replaceable by a later migration: `CREATE OR REPLACE`, `DROP`
+and `ALTER … OWNER TO` all require ownership. The migration aborts partway,
+golang-migrate leaves the ledger dirty, and because the migrate Job is an
+ArgoCD PreSync hook the Deployment is never updated — the old pod keeps
+serving while ArgoCD reports Healthy and CI stays green. That is exactly how
+preview wedged in TRA-1104.
+
+It is a guardrail, not a security boundary: `session_user` is still the
+`postgres` superuser, so `SET ROLE postgres` escapes it deliberately. Plain
+`RESET ROLE` does **not** — the role arrives in the connection's startup
+packet, so it becomes the session default that `RESET` returns to. What
+changed is the default, so drift is no longer created by accident.
+
+When the output is going to be piped or read by a script, note that the
+`→ namespace/pod` banner is written to **stderr**, so stdout carries only
+psql's output. A one-shot query runs with `ON_ERROR_STOP=1`, so a failing
+statement exits non-zero.
+
+`QUERY` may span multiple lines and contain quotes, `$` and backticks — it is
+passed through as a single argument. That is what makes a real audit runnable
+without a hand-rolled `kubectl exec`, for example the ownership sweep from
+platform's `findOwnershipDrift` (`backend/internal/cmd/migrate/ownership.go`):
+
+```sh
+just psql preview "$(cat drift.sql)"
+```
+
+Run that one as `psql`, **not** `psql-super`: it filters on
+`pg_has_role(CURRENT_USER, ...)`, and a superuser is implicitly a member of
+every role, so it would report a false clean.
+
+> **`just psql prod` is not read-only.** `trakrf-migrate` owns the schema:
+> it can still insert, update, and drop. It runs unguarded, with no
+> `confirm_prod` prompt, because it opens a shell rather than performing one
+> describable operation `confirm_prod` could gate. The lack of a prompt
+> reflects that, not that the recipe is safe. Treat every statement you type
+> inside it as if it were already committed against production.
+
+### psql-super — superuser, deliberate opt-in
+
+```sh
+just psql-super preview
+YES=1 just psql-super prod 'ALTER FUNCTION f() OWNER TO "trakrf-migrate"'
+```
+
+Identical to `psql` but with no `SET ROLE` — a raw `postgres` superuser
+session. Reach for it only for what genuinely needs superuser: repairing
+ownership drift, and role or extension management. Anything you CREATE here
+is owned by `postgres` and becomes the next wedge.
+
+Unlike `psql`, this one **prompts before prod** (`confirm_prod`) and fails
+closed without a tty, so nothing scripted falls through it — set `YES=1` to
+proceed deliberately. It also prints a warning banner on stderr in both
+environments.
 
 ### Cluster health
 
@@ -474,7 +530,7 @@ Two ❌ auth lines above the unreachable namespaces means this is an auth
 failure wearing a network error's clothes. Unreachable namespaces with the
 first two lines green is the real transient.
 
-### ``Recipe `psql` got 0 arguments but takes 1``
+### ``Recipe `psql` got 0 arguments but takes at least 1``
 
 `ENV` is required by design on every per-env recipe — there is no default
 that could silently mean prod. Name the environment explicitly:

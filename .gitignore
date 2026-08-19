@@ -43,4 +43,11 @@ backend.conf
 
 # Ignore .terraform.lock.hcl file (uncomment if you prefer not to version this file)
 # .terraform.lock.hcl
-.claude/
+# Git worktrees — Claude Code's native worktree tool writes here; this is the
+# canonical location (gitignored). Narrow ignore: the rest of .claude/ stays
+# tracked, so shared agent config (csw.json) is versioned with the repo.
+.claude/worktrees/
+
+# Claude Code local settings and per-session scratch
+.claude/settings.local.json
+.claude/*.lock
