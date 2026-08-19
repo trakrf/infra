@@ -65,6 +65,80 @@ check "rejects a missing namespace arg" $? 1
 
 unset -f kubectl
 
+echo "db_psql:"
+
+# Stub kubectl to print the argv it was handed, one arg per line, so the
+# assertions below pin the exact command that reaches the primary.
+kubectl() { printf '%s\n' "$@"; }
+
+# --- non-superuser interactive (the default path) ---
+out=$(db_psql trakrf-preview trakrf-db-preview-1 trakrf-migrate 2>/dev/null)
+case "$out" in
+  *"PGOPTIONS=-c role=trakrf-migrate"*) ok "interactive sets the role via PGOPTIONS" ;;
+  *) bad "interactive sets the role via PGOPTIONS (got: $(echo "$out" | tr '\n' ' '))" ;;
+esac
+case "$out" in
+  *"-it"*) ok "interactive allocates a tty" ;;
+  *)       bad "interactive allocates a tty" ;;
+esac
+if ! printf '%s' "$out" | grep -q -- "ON_ERROR_STOP"; then
+  ok "interactive does not pass a query"
+else
+  bad "interactive does not pass a query"
+fi
+
+# --- non-superuser one-shot query ---
+out=$(db_psql trakrf-prod trakrf-db-prod-1 trakrf-migrate "SELECT 1" 2>/dev/null)
+case "$out" in
+  *"PGOPTIONS=-c role=trakrf-migrate"*) ok "query mode sets the role via PGOPTIONS" ;;
+  *) bad "query mode sets the role via PGOPTIONS" ;;
+esac
+if printf '%s' "$out" | grep -qx "SELECT 1"; then
+  ok "query mode forwards the query verbatim"
+else
+  bad "query mode forwards the query verbatim"
+fi
+if printf '%s' "$out" | grep -qx "ON_ERROR_STOP=1"; then
+  ok "query mode stops on error"
+else
+  bad "query mode stops on error"
+fi
+# -i, not -it: a tty on a piped/scripted call makes psql emit control
+# characters into the captured output.
+if printf '%s' "$out" | grep -qx -- "-i"; then
+  ok "query mode uses -i (no tty)"
+else
+  bad "query mode uses -i (no tty)"
+fi
+
+# --- superuser opt-in ---
+out=$(db_psql trakrf-preview trakrf-db-preview-1 postgres 2>/dev/null)
+if printf '%s' "$out" | grep -q "PGOPTIONS"; then
+  bad "superuser mode sets no role (raw postgres session)"
+else
+  ok "superuser mode sets no role (raw postgres session)"
+fi
+
+# A query containing spaces, a semicolon and quotes must survive as ONE
+# argument — word-splitting it would send psql a truncated statement, or
+# execute the tail as a separate one.
+metaquery="SELECT 'a b'; -- ; drop"
+out=$(db_psql trakrf-preview p trakrf-migrate "$metaquery" 2>/dev/null)
+if printf '%s' "$out" | grep -qxF "$metaquery"; then
+  ok "query with spaces/quotes stays a single argument"
+else
+  bad "query with spaces/quotes stays a single argument (got: $(printf '%s' "$out" | tr '\n' '|'))"
+fi
+
+db_psql "" pod trakrf-migrate >/dev/null 2>&1
+check "rejects a missing namespace" $? 1
+db_psql ns "" trakrf-migrate >/dev/null 2>&1
+check "rejects a missing pod" $? 1
+db_psql ns pod "" >/dev/null 2>&1
+check "rejects a missing role" $? 1
+
+unset -f kubectl
+
 echo
 echo "passed: $pass  failed: $fail"
 [ "$fail" -eq 0 ]
