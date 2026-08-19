@@ -1112,11 +1112,16 @@ psql ENV QUERY="":
     require_env "{{ ENV }}"
     ns="trakrf-{{ ENV }}"
     pod=$(cnpg_primary_pod "$ns")
-    # quote(), not "{{ QUERY }}": just substitutes into the recipe body
-    # textually, so SQL containing a double quote (a quoted identifier such
-    # as "trakrf-migrate") would otherwise terminate the string and mangle
-    # the statement. quote() emits a properly single-quoted shell word, so
+    # quote() rather than interpolating QUERY into a bare double-quoted
+    # assignment: just substitutes into the recipe body textually, so SQL
+    # containing a double quote (a quoted identifier such as
+    # "trakrf-migrate") would otherwise terminate the string and mangle the
+    # statement. quote() emits a properly single-quoted shell word, so
     # embedded quotes, $ and backticks all survive verbatim.
+    #
+    # Do NOT write an interpolation of QUERY inside a comment here. just
+    # expands them in comments too, and a multi-line value then spills past
+    # the leading # and executes as shell.
     query={{ quote(QUERY) }}
     # Banner on stderr so `just psql ENV "SELECT .."` stays pipeable.
     echo "→ $ns/$pod (database: trakrf, role: trakrf-migrate)" >&2

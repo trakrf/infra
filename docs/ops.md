@@ -232,6 +232,19 @@ When the output is going to be piped or read by a script, note that the
 psql's output. A one-shot query runs with `ON_ERROR_STOP=1`, so a failing
 statement exits non-zero.
 
+`QUERY` may span multiple lines and contain quotes, `$` and backticks — it is
+passed through as a single argument. That is what makes a real audit runnable
+without a hand-rolled `kubectl exec`, for example the ownership sweep from
+platform's `findOwnershipDrift` (`backend/internal/cmd/migrate/ownership.go`):
+
+```sh
+just psql preview "$(cat drift.sql)"
+```
+
+Run that one as `psql`, **not** `psql-super`: it filters on
+`pg_has_role(CURRENT_USER, ...)`, and a superuser is implicitly a member of
+every role, so it would report a false clean.
+
 > **`just psql prod` is not read-only.** `trakrf-migrate` owns the schema:
 > it can still insert, update, and drop. It runs unguarded, with no
 > `confirm_prod` prompt, because it opens a shell rather than performing one

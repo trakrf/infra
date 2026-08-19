@@ -139,6 +139,55 @@ check "rejects a missing role" $? 1
 
 unset -f kubectl
 
+# The psql/psql-super recipes assemble their QUERY argument in the justfile,
+# not here, so ops-lib stubs cannot reach that logic. `just --dry-run` renders
+# the recipe body (to stderr) without running it, which is enough to assert
+# the assembled script is well-formed.
+#
+# Regression: an interpolation of QUERY written inside a COMMENT in the recipe
+# body is expanded by just like any other, so a multi-line query spilled past
+# the leading # and its remaining lines executed as shell ("SELECT: command
+# not found"). Single-line queries hid it completely.
+echo "justfile psql recipes:"
+if command -v just >/dev/null 2>&1; then
+  mq=$'SELECT \'a\', "B"\nFROM t\nWHERE x IN (\'r\',\'p\'); -- $notavar `notacmd`'
+  for recipe in psql psql-super; do
+    body=$(just --dry-run "$recipe" preview "$mq" 2>&1 >/dev/null) || body=""
+    if [ -z "$body" ]; then
+      bad "$recipe: --dry-run produced a body"
+      continue
+    fi
+    if printf '%s\n' "$body" | bash -n 2>/dev/null; then
+      ok "$recipe: multi-line query renders a syntactically valid script"
+    else
+      bad "$recipe: multi-line query renders a syntactically valid script"
+    fi
+    # End-to-end: run the real recipe with a stub kubectl first on PATH, and
+    # confirm the query reaches psql as ONE argument, byte-for-byte.
+    stubdir=$(mktemp -d)
+    {
+      echo '#!/usr/bin/env bash'
+      # `get pod` is cnpg_primary_pod resolving the primary; anything else is
+      # the exec, whose argv we print one-per-line for inspection.
+      echo 'case " $* " in *" get "*) echo fakepod ;; *) printf "%s\n" "$@" ;; esac'
+    } > "$stubdir/kubectl"
+    chmod +x "$stubdir/kubectl"
+
+    argv=$(PATH="$stubdir:$PATH" YES=1 just "$recipe" preview "$mq" 2>/dev/null)
+    rm -rf "$stubdir"
+
+    # The query is the final argument, so compare the tail of the argv dump.
+    got=$(printf '%s\n' "$argv" | tail -n "$(printf '%s\n' "$mq" | wc -l)")
+    if [ "$got" = "$mq" ]; then
+      ok "$recipe: query reaches psql as one intact argument"
+    else
+      bad "$recipe: query reaches psql as one intact argument (got '$got')"
+    fi
+  done
+else
+  echo "  ⏭  skipped (just not found)"
+fi
+
 echo
 echo "passed: $pass  failed: $fail"
 [ "$fail" -eq 0 ]
