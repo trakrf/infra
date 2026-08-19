@@ -16,10 +16,27 @@ run ./scripts/test-ops-lib.sh
 run tofu fmt -check -recursive terraform
 
 # --- tofu validate (job: tofu-validate, matrix dir) ---
+#
+# `tofu init` records provider hashes for the current platform into the
+# tracked .terraform.lock.hcl files. CI does this in a throwaway checkout and
+# never notices; run locally it leaves unrelated lockfile churn staged into
+# whatever you commit next. Validation must not mutate the repo, so note
+# which lockfiles are clean going in and restore exactly those afterwards —
+# a lockfile you had already edited on purpose is left alone.
+clean_locks=()
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  git diff --quiet -- "$f" 2>/dev/null && clean_locks+=("$f")
+done < <(git ls-files 'terraform/*/.terraform.lock.hcl')
+
 for d in aws azure cloudflare bootstrap gcp; do
   run tofu -chdir="terraform/$d" init -backend=false -input=false
   run tofu -chdir="terraform/$d" validate
 done
+
+if [ "${#clean_locks[@]}" -gt 0 ]; then
+  git checkout -- "${clean_locks[@]}"
+fi
 
 # --- helm lint + template (job: helm, matrix chart x cluster) ---
 for c in cert-manager-config traefik-config trakrf-backend trakrf-db; do
