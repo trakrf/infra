@@ -6,6 +6,16 @@ on:
     branches: [main]
 
 jobs:
+  ops-lib:
+    # Unit tests for scripts/ops-lib.sh, the shared helper library behind the
+    # per-env ops recipes in the justfile. Pure bash with stubbed kubectl —
+    # no cluster, no credentials.
+    name: ops-lib tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/test-ops-lib.sh
+
   tofu-fmt:
     name: tofu fmt
     runs-on: ubuntu-latest
