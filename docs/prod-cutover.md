@@ -5,7 +5,7 @@
 - **Date:** 2026-05-30
 - **Owners:** `infra` (Mike) — everything below except the image; `platform` — image rebuild + `:prod` promote
 - **Status:** ✅ **EXECUTED + VERIFIED 2026-05-30** — `app.trakrf.id` live on GKE (orange), backend v1.2.0, all checks passed. The **As-run outcome** below is authoritative; the phased plan that follows is the as-written pre-execution record (kept for the trail + as a template for the next cutover).
-- **Reference designs:** `docs/superpowers/specs/2026-05-27-tra-850-cluster-per-env-cnpg-prod-design.md`, `docs/db-migration.md` (FDW mechanics), Linear TRA-375 / TRA-850 / TRA-888 / TRA-889
+- **Reference designs:** `docs/db-migration.md` (FDW mechanics), Linear TRA-375 / TRA-850 / TRA-888 / TRA-889
 
 > This is the **real** customer-facing cutover. The dry-run (TRA-850) has been live and healthy on `app.prod.gke.trakrf.id` for 3 days. This runbook does the delta: durable deploy mechanism, real secret, fresh data, the public `app.trakrf.id` orange route, and the DNS flip.
 
