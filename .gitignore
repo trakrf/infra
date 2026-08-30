@@ -51,3 +51,18 @@ backend.conf
 # Claude Code local settings and per-session scratch
 .claude/settings.local.json
 .claude/*.lock
+
+# Superpowers design specs + implementation plans: generated per-session as
+# working artifacts, never tracked. Both paths: the skills default to
+# docs/superpowers/, and repos whose docs/ is published content use the root.
+superpowers/
+docs/superpowers/
+.superpowers/
+
+# Working notes — investigation records, scratch analysis, session notes. Same
+# rationale as docs/superpowers/ above: they earn their keep while a ticket is
+# being built and reviewed, then go stale fast (PIDs, bench state, host facts)
+# while still reading as authoritative because they are checked in. Durable
+# conclusions belong in CLAUDE.md, an ADR or a code comment; the narrative and
+# evidence belong on the ticket.
+docs/notes/
