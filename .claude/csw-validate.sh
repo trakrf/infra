@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Local mirror of .github/workflows/ci.yml — run before opening a PR so CI
-# failures surface here instead of on the PR. Lives in .claude/ because this
-# repo gitignores all of .claude/; promoting it to a `just validate` recipe
+# failures surface here instead of on the PR. Lives in .claude/ beside csw.json,
+# which references it; only .claude/worktrees/, settings.local.json and *.lock are
+# ignored, so this file is tracked. Promoting it to a `just validate` recipe
 # (matching trakrf/platform) would need its own PR.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
