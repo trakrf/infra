@@ -35,7 +35,7 @@ Thank you for your interest in contributing! This repo manages TrakRF's cloud in
    ```bash
    git clone https://github.com/trakrf/infra
    cd infra
-   cp .env.local.example .env.local  # Add your credentials
+   cp .env.local.sample .env.local  # Add your credentials
    direnv allow
    ```
 
@@ -71,10 +71,12 @@ chore: update provider versions
 
 ### Pull Request Process
 
-1. **Create a feature branch**
+1. **Create a branch**
    ```bash
-   git checkout -b feature/your-feature-name
+   git checkout -b <type>/<short-slug>   # e.g. fix/dns-record-drift
    ```
+   Use the same types as the commit prefixes below. Maintainers working from a
+   tracker issue insert the ticket: `<type>/<ticket>-<slug>`.
 
 2. **Make your changes**
    - Keep changes focused and atomic

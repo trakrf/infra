@@ -9,9 +9,7 @@ just cnpg-bootstrap <cluster>
 
 CNPG operator stays out of ArgoCD by design — its pre-install hooks
 depend on CRDs the same chart installs, which creates a chicken-and-egg
-problem ArgoCD doesn't gracefully handle. See
-`docs/superpowers/specs/2026-04-12-trakrf-db-design.md` for the full
-rationale.
+problem ArgoCD doesn't gracefully handle.
 
 The CNPG `Cluster` CR itself (the actual DB) is managed by ArgoCD via
 the `helm/trakrf-db/` chart — only the operator lives outside.

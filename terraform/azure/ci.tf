@@ -1,6 +1,5 @@
 # GitHub Actions OIDC — federated identity for terraform/azure/ CI (TRA-439)
-# Dedicated app registration (not shared with hashsphere). See
-# docs/superpowers/specs/2026-04-22-tra-439-azure-ci-oidc-design.md.
+# Dedicated app registration (not shared with hashsphere).
 
 resource "azuread_application" "trakrf_infra_ci" {
   display_name = "trakrf-infra-ci"
