@@ -13,6 +13,10 @@ run() { printf '\n\033[1m==> %s\033[0m\n' "$*"; "$@" || { fail=1; printf '\033[3
 # --- ops-lib unit tests (job: ops-lib) ---
 run ./scripts/test-ops-lib.sh
 
+# --- doc path references (job: doc-paths) ---
+run ./scripts/test-check-doc-paths.sh
+run ./scripts/check-doc-paths.sh
+
 # --- tofu fmt (job: tofu-fmt) ---
 run tofu fmt -check -recursive terraform
 

@@ -16,6 +16,18 @@ jobs:
       - uses: actions/checkout@v4
       - run: ./scripts/test-ops-lib.sh
 
+  doc-paths:
+    # Gives CONTRIBUTING.md and the runbooks a consumer. Every one of these
+    # files rotted because nothing ever read them: the quickstart named an env
+    # sample that had been renamed, and five files pointed into a docs tree
+    # that had been deleted. Both classes are caught here.
+    name: doc paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/test-check-doc-paths.sh
+      - run: ./scripts/check-doc-paths.sh
+
   tofu-fmt:
     name: tofu fmt
     runs-on: ubuntu-latest
