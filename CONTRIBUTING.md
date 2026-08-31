@@ -87,6 +87,8 @@ chore: update provider versions
    - Run `tofu validate` and `tofu fmt -check`
    - Run `tofu plan` to verify expected changes
    - Check for exposed secrets or credentials
+   - If you edited a doc, run `./scripts/check-doc-paths.sh` — CI fails when a
+     file named in the docs does not exist
 
 4. **Submit PR**
    - Provide clear description of changes
