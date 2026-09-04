@@ -13,6 +13,9 @@ run() { printf '\n\033[1m==> %s\033[0m\n' "$*"; "$@" || { fail=1; printf '\033[3
 # --- ops-lib unit tests (job: ops-lib) ---
 run ./scripts/test-ops-lib.sh
 
+# --- init-grants SQL (job: db-grants) ---
+run ./scripts/test-db-grants.sh
+
 # --- doc path references (job: doc-paths) ---
 run ./scripts/test-check-doc-paths.sh
 run ./scripts/check-doc-paths.sh

@@ -95,6 +95,14 @@ no privileges and the backend fails at **runtime**, not at migrate (easy to
 misdiagnose — `/readyz` is shallow and still returns `ok`). The init-grants SQL
 is idempotent and does retroactive `GRANT ON ALL` + `ALTER DEFAULT PRIVILEGES`.
 
+It also grants `trakrf-app` **read-only** on `trakrf.schema_migrations`, which
+the backend's `/health` schema-drift check reads. `GRANT ON ALL TABLES` covers
+the ledger only if it already exists when the Job runs, and this chart is not
+ordered against the migrate Job that creates it — so check the ledger
+separately below, not just a business table. It is the one that goes missing
+(TRA-1218), and an unreadable ledger costs a 503 that should have fired, while
+`/health` goes on returning 200.
+
 Re-run it by forcing a sync on the `trakrf-db-<env>` Application (it's a Helm
 `post-upgrade` hook):
 
@@ -105,6 +113,11 @@ kubectl -n argocd patch application trakrf-db-<env> --type merge \
 kubectl -n trakrf-<env> exec <cluster>-1 -c postgres -- psql -U postgres -d trakrf \
   -At -c "SELECT has_table_privilege('trakrf-app','trakrf.organizations','SELECT')"
 # expect: t
+# the ledger too — read yes, write no:
+kubectl -n trakrf-<env> exec <cluster>-1 -c postgres -- psql -U postgres -d trakrf \
+  -At -c "SELECT has_table_privilege('trakrf-app','trakrf.schema_migrations','SELECT'),
+                 has_table_privilege('trakrf-app','trakrf.schema_migrations','INSERT')"
+# expect: t|f
 ```
 
 **Gate the FDW pull on real backend health** — bounce the backend and confirm
