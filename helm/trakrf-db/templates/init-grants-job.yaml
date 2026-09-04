@@ -86,4 +86,27 @@ spec:
                 GRANT USAGE, SELECT ON SEQUENCES TO "{{ .Values.roles.app }}";
               ALTER DEFAULT PRIVILEGES FOR ROLE "{{ .Values.roles.migrate }}" IN SCHEMA trakrf
                 GRANT EXECUTE ON FUNCTIONS TO "{{ .Values.roles.app }}";
+              -- The migration ledger, explicitly and read-only. The backend
+              -- serves as the app role and reads it for the /health
+              -- schema-drift check; unreadable, that check reports a healthy
+              -- 200 with the schema block omitted, so "I cannot tell" and
+              -- "all clear" become the same payload (TRA-1218). The ledger is
+              -- bookkeeping, not application data, so the blanket ON ALL
+              -- TABLES grant above is narrowed back to SELECT here.
+              --
+              -- Guarded on existence: the ledger is created by the
+              -- trakrf-backend chart's migrate Job — a separate Helm release,
+              -- which hook weights never order this one against — so on a
+              -- fresh install it does not exist yet, and an unguarded GRANT
+              -- would abort the whole Job under ON_ERROR_STOP=1. There the
+              -- ledger instead inherits the default privileges set above,
+              -- write included, until the next db-chart upgrade runs this.
+              DO $$
+              BEGIN
+                IF to_regclass('trakrf.schema_migrations') IS NOT NULL THEN
+                  EXECUTE 'GRANT SELECT ON trakrf.schema_migrations TO "{{ .Values.roles.app }}"';
+                  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON trakrf.schema_migrations FROM "{{ .Values.roles.app }}"';
+                END IF;
+              END
+              $$;
               SQL
