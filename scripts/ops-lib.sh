@@ -152,3 +152,45 @@ db_psql() {
             psql -U postgres -d trakrf
     fi
 }
+
+# argocd_automated_get <app>
+# Echo the Application's spec.syncPolicy.automated as JSON, or nothing when
+# automated sync is not configured. An unset policy is a real state, not an
+# error — a caller restoring it must put back exactly what it found, rather
+# than a policy the Application never had.
+#
+# Locals here are prefixed `_ac_` deliberately. Bash `local` is DYNAMICALLY
+# scoped: while this function runs, its locals shadow same-named variables in
+# every caller and in anything it calls — including a trap handler that fires
+# mid-call. A plain `local policy` cost an afternoon: a caller saving the old
+# policy in `$policy`, interrupted during `argocd_automated_set "$app" null`,
+# ran its restore trap and read `policy=null` from THIS function's frame,
+# then dutifully restored null and left automated sync switched off.
+argocd_automated_get() {
+    local _ac_app="${1:-}"
+    if [ -z "$_ac_app" ]; then
+        echo "ERROR: argocd_automated_get requires an application name" >&2
+        return 1
+    fi
+    kubectl -n argocd get application "$_ac_app" \
+        -o jsonpath='{.spec.syncPolicy.automated}' 2>/dev/null
+}
+
+# argocd_automated_set <app> <policy-json|null|"">
+# Patch spec.syncPolicy.automated. Pass a JSON object to restore a policy, or
+# `null` — or the empty string, which is how an unset policy reads back — to
+# suspend automated sync.
+#
+# Suspending is what makes a deliberately-broken environment safe to leave
+# broken for a few seconds: with automated sync off, no ArgoCD-driven deploy,
+# and therefore no migrate Job, can land in the middle of the window.
+argocd_automated_set() {
+    local _ac_app="${1:-}" _ac_policy="${2-}"
+    if [ -z "$_ac_app" ]; then
+        echo "ERROR: argocd_automated_set requires an application name" >&2
+        return 1
+    fi
+    [ -n "$_ac_policy" ] || _ac_policy=null
+    kubectl -n argocd patch application "$_ac_app" --type merge \
+        -p "{\"spec\":{\"syncPolicy\":{\"automated\":${_ac_policy}}}}"
+}

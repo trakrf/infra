@@ -1160,6 +1160,171 @@ db-status ENV:
     echo
     kubectl -n "$ns" get pods -l "cnpg.io/cluster=trakrf-db-{{ ENV }}" -o wide
 
+# Prove the /health schema-drift check is live HERE, by breaking it on purpose.
+#
+# A check that cannot run reports the same 200 as a healthy one. That was
+# TRA-1218: the app role had lost SELECT on the migration ledger, so the
+# backend could not read it, and /health answered "ok" for a month while the
+# drift check did nothing. Reading the payload cannot distinguish a working
+# check from an absent one — only staging drift can.
+#
+# Worth re-running after a fresh cluster build, after a helm/trakrf-db change
+# touching grants, and after a CNPG rebuild or restore. Each can revoke that
+# read again and put the check straight back to sleep.
+#
+# Lowers the ledger version by one and asserts:
+#   /health   -> 503, status schema_behind, naming the pending migration
+#   /healthz  -> 200   liveness: a behind-schema pod must not be restarted
+#   /readyz   -> 200   readiness: nor pulled from the load balancer
+# then restores the version and re-asserts /health -> 200.
+#
+# The last two are the point. A behind schema is repaired BY a migration, and
+# a pod that has been evicted cannot serve while that runs — so a regression
+# there turns a schema lag into an outage. Nothing else exercises it.
+#
+# Automated sync on trakrf-backend-<env> is suspended for the duration. If the
+# migrate Job ran while the ledger reads v-1, golang-migrate would re-apply
+# migration v: Postgres wraps migrations in a transaction so it rolls back
+# rather than damaging the schema, but it sets dirty=true and fails the
+# deploy. The version and the sync policy are both restored on every exit
+# path, including an interrupt.
+#
+#   just verify-drift-check preview
+verify-drift-check ENV:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/ops-lib.sh
+    require_env "{{ ENV }}"
+    ns="trakrf-{{ ENV }}"
+    app="trakrf-backend-{{ ENV }}"
+    case "{{ ENV }}" in
+      preview) host=app.preview.trakrf.id ;;
+      prod)    host=app.trakrf.id ;;
+    esac
+    confirm_prod "{{ ENV }}" "stage schema drift on $host (lowers the migration ledger version for a few seconds)"
+
+    pod=$(cnpg_primary_pod "$ns")
+    fail=0
+    ok()  { echo "  ✅ $1"; }
+    bad() { echo "  ❌ $1"; fail=1; }
+
+    # code <path> — HTTP status only. --max-time matters: a curl left hanging
+    # while drift is staged holds the window open indefinitely. 000 on any
+    # transport failure, so an assertion reports it instead of set -e killing
+    # the run before the restore trap is even installed.
+    code() {
+      curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+        "https://${host}/$1" 2>/dev/null || echo 000
+    }
+
+    # ledger <column> — one value, format-independent. db_psql takes no psql
+    # flags, so rather than parse a table by row offset the query labels its
+    # own answer and we pick that out.
+    ledger() {
+      db_psql "$ns" "$pod" trakrf-migrate \
+        "SELECT 'LEDGER=' || $1 FROM trakrf.schema_migrations" 2>/dev/null \
+        | sed -n 's/^.*LEDGER=\([^ ]*\).*$/\1/p' | head -1
+    }
+
+    # Preflight. Staging drift against an app that is already unhealthy
+    # produces a result nobody can read, so establish the baseline first —
+    # while nothing has been mutated and backing out costs nothing.
+    echo "Preflight ($host):"
+    before=$(code health)
+    if [ "$before" = "200" ]; then ok "/health is 200 before we touch anything"
+    else bad "/health is 200 before we touch anything (got $before)"; fi
+    version=$(ledger version)
+    case "$version" in
+      ''|*[!0-9]*) bad "read a numeric ledger version (got '${version:-<empty>}')" ;;
+      *)           ok "ledger version is $version" ;;
+    esac
+    [ "$fail" -eq 0 ] || { echo; echo "Preflight failed — nothing was changed."; exit 1; }
+
+    behind=$((version - 1))
+    policy=$(argocd_automated_get "$app")
+
+    # Restore on EVERY exit path — a failed assertion, a curl timeout, or a
+    # ctrl-c. Leaving an environment drifted, or with its automated sync
+    # switched off, is far worse than the check not running.
+    #
+    # Retries, and verifies rather than assuming. A ctrl-c reaches the whole
+    # process group, so the kubectl the handler starts can be cut down with
+    # it — measured: a single-attempt restore leaves automated sync switched
+    # off after an interrupt, silently, because every failure here is
+    # swallowed by design. A later attempt runs after the signal has been
+    # delivered and succeeds. So attempt until the state reads back correct.
+    #
+    # The signal handler exits explicitly rather than falling through: a bare
+    # `trap restore INT` RESUMES the script after the handler returns, which
+    # would carry an interrupted run on into the assertions with the drift
+    # already reverted.
+    restore() {
+      local attempt
+      for attempt in 1 2 3; do
+        db_psql "$ns" "$pod" trakrf-migrate \
+          "UPDATE trakrf.schema_migrations SET version = $version" >/dev/null 2>&1 || true
+        argocd_automated_set "$app" "$policy" >/dev/null 2>&1 || true
+        if [ "$(argocd_automated_get "$app" 2>/dev/null)" = "$policy" ] \
+           && [ "$(ledger version)" = "$version" ]; then
+          return 0
+        fi
+      done
+      # Never leave this state unannounced — it is the one outcome worse than
+      # the check not running.
+      echo "!! RESTORE INCOMPLETE on $app. Put it back by hand:" >&2
+      echo "   just psql {{ ENV }} \"UPDATE trakrf.schema_migrations SET version = $version\"" >&2
+      echo "   kubectl -n argocd patch application $app --type merge \\" >&2
+      echo "     -p '{\"spec\":{\"syncPolicy\":{\"automated\":${policy:-null}}}}'" >&2
+      return 1
+    }
+    trap 'restore || true; exit 130' INT TERM
+    trap 'restore || true' EXIT
+
+    echo "Suspending automated sync on $app..."
+    argocd_automated_set "$app" null >/dev/null
+
+    echo "Staging drift ($version -> $behind):"
+    db_psql "$ns" "$pod" trakrf-migrate \
+      "UPDATE trakrf.schema_migrations SET version = $behind" >/dev/null
+
+    h=$(code health); z=$(code healthz); r=$(code readyz)
+    body=$(curl -s --max-time 10 "https://${host}/health.json" 2>/dev/null || true)
+
+    [ "$h" = "503" ] && ok "/health  503 while behind" || bad "/health  503 while behind (got $h)"
+    [ "$z" = "200" ] && ok "/healthz 200 while behind — pod not restarted" \
+                     || bad "/healthz 200 while behind — pod not restarted (got $z)"
+    [ "$r" = "200" ] && ok "/readyz  200 while behind — pod still in the LB" \
+                     || bad "/readyz  200 while behind — pod still in the LB (got $r)"
+    case "$body" in
+      *'"status":"schema_behind"'*) ok "payload reports status schema_behind" ;;
+      *) bad "payload reports status schema_behind (got: ${body:0:120})" ;;
+    esac
+    case "$body" in
+      *'"pending":['*) ok "payload names the pending migration" ;;
+      *) bad "payload names the pending migration" ;;
+    esac
+
+    echo "Restoring (-> $version) and re-enabling sync:"
+    trap - EXIT INT TERM
+    restore
+
+    after=$(code health)
+    [ "$after" = "200" ] && ok "/health back to 200" || bad "/health back to 200 (got $after)"
+    # 'false', not the 'f' psql's table view shows: ledger() concatenates the
+    # boolean into text, and that cast spells it out.
+    dirty=$(ledger dirty)
+    [ "$dirty" = "false" ] && ok "ledger is not dirty" || bad "ledger is not dirty (got '$dirty')"
+    now=$(argocd_automated_get "$app")
+    [ "$now" = "$policy" ] && ok "automated sync policy restored" \
+                           || bad "automated sync policy restored (was '$policy', now '$now')"
+
+    echo
+    if [ "$fail" -ne 0 ]; then
+      echo "verify-drift-check {{ ENV }}: FAILED"
+      exit 1
+    fi
+    echo "verify-drift-check {{ ENV }}: OK — the drift check is live"
+
 # All pods in an environment, wide.
 #   just pods prod
 pods ENV:
