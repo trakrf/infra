@@ -394,6 +394,61 @@ these three, read the streamed output — `deployment "trakrf-backend"
 successfully rolled out` is the thing to look for. Do not trust the exit
 code. Confirm with `just pods <env>` if the output was ambiguous.
 
+### Verify the schema-drift check is actually live
+
+```sh
+just verify-drift-check preview
+```
+
+Breaks `/health` on purpose, confirms it reacts, and puts it back.
+
+**Why this needs a recipe rather than a glance at the payload.** A drift check
+that *cannot run* returns the same `200` as a healthy one. That is not
+hypothetical: the app role lost `SELECT` on `trakrf.schema_migrations`, the
+backend could not read the ledger, and `/health` answered `ok` for a month
+while the check did nothing at all. Reading a green payload cannot tell the
+two apart — only staging drift can.
+
+Re-run it after a fresh cluster build, after a `helm/trakrf-db` change that
+touches grants, and after a CNPG rebuild or restore. Each of those can revoke
+that read again and put the check straight back to sleep.
+
+It lowers the ledger version by one, then asserts:
+
+| endpoint | expected while behind | why it matters |
+|---|---|---|
+| `/health` | **503**, `status: schema_behind` | the check is running |
+| `/healthz` | **200** | liveness: the pod must not be restarted |
+| `/readyz` | **200** | readiness: nor pulled from the load balancer |
+
+**The last two are the real assertion.** A behind schema is repaired *by* a
+migration, and an evicted pod cannot serve while that migration runs — so a
+regression there converts a schema lag into an outage. Nothing else in the
+repo exercises it.
+
+Automated sync on `trakrf-backend-<env>` is suspended for the duration and
+restored afterwards. That is not caution for its own sake: if the migrate Job
+ran while the ledger reads `v-1`, golang-migrate would re-apply migration `v`.
+Postgres wraps migrations in a transaction so it rolls back rather than
+damaging the schema, but it sets `dirty = true` and fails the deploy.
+
+The ledger version and the sync policy are both restored on every exit path,
+including `ctrl-c`, and the restore verifies itself and retries. If it still
+cannot finish it prints the two commands to run by hand — **do not ignore
+that message**, an environment left with automated sync switched off is worse
+than the check never having run. Confirm with:
+
+```sh
+kubectl -n argocd get application trakrf-backend-preview \
+  -o jsonpath='{.spec.syncPolicy.automated}'
+just psql preview "SELECT version, dirty FROM trakrf.schema_migrations"
+```
+
+Prod is gated behind the usual typed confirmation. The preflight refuses to
+touch anything unless `/health` is already `200` and the ledger reads a
+number, so a run against an already-broken environment stops before mutating
+it.
+
 ## 7. ArgoCD
 
 ### Status of every application

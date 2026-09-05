@@ -139,6 +139,94 @@ check "rejects a missing role" $? 1
 
 unset -f kubectl
 
+echo "argocd_automated_get:"
+
+kubectl() { echo '{"prune":true,"selfHeal":true}'; }
+out=$(argocd_automated_get trakrf-backend-preview); rc=$?
+check "returns rc=0 when the app has a policy" $rc 0
+if [ "$out" = '{"prune":true,"selfHeal":true}' ]; then
+  ok "echoes the policy verbatim"
+else
+  bad "echoes the policy verbatim (got '$out')"
+fi
+
+# An app with no automated sync configured: jsonpath yields nothing. That is
+# a real state, not an error — verify-drift-check must restore it as-is
+# rather than inventing a policy the Application never had.
+kubectl() { echo -n ""; }
+out=$(argocd_automated_get trakrf-backend-preview); rc=$?
+check "returns rc=0 when automated is unset" $rc 0
+if [ -z "$out" ]; then
+  ok "echoes nothing when automated is unset"
+else
+  bad "echoes nothing when automated is unset (got '$out')"
+fi
+
+argocd_automated_get >/dev/null 2>&1
+check "rejects a missing app name" $? 1
+
+unset -f kubectl
+
+echo "argocd_automated_set:"
+
+# Print the argv so the assertions pin the exact patch payload. Getting the
+# restore payload wrong is the failure that leaves an environment with its
+# automated sync silently switched off.
+kubectl() { printf '%s\n' "$@"; }
+
+out=$(argocd_automated_set trakrf-backend-preview null 2>/dev/null)
+if printf '%s' "$out" | grep -qF '"automated":null'; then
+  ok "suspends with automated:null"
+else
+  bad "suspends with automated:null (got: $(printf '%s' "$out" | tr '\n' ' '))"
+fi
+
+out=$(argocd_automated_set trakrf-backend-preview '{"prune":true,"selfHeal":true}' 2>/dev/null)
+if printf '%s' "$out" | grep -qF '"automated":{"prune":true,"selfHeal":true}'; then
+  ok "restores a captured policy verbatim"
+else
+  bad "restores a captured policy verbatim (got: $(printf '%s' "$out" | tr '\n' ' '))"
+fi
+
+# A policy that was unset is restored by patching null, not by emitting
+# broken JSON from an empty string.
+out=$(argocd_automated_set trakrf-backend-preview "" 2>/dev/null)
+if printf '%s' "$out" | grep -qF '"automated":null'; then
+  ok "treats an empty policy as null"
+else
+  bad "treats an empty policy as null (got: $(printf '%s' "$out" | tr '\n' ' '))"
+fi
+
+argocd_automated_set "" null >/dev/null 2>&1
+check "rejects a missing app name" $? 1
+
+# Regression, and the reason these functions prefix their locals `_ac_`.
+# Bash `local` is dynamically scoped, so a plain `local policy` here shadows
+# a caller's `$policy` for the duration of the call — including inside a trap
+# handler that fires mid-call. verify-drift-check saves the old sync policy in
+# exactly such a variable and restores it from a trap; with the names
+# colliding, an interrupt during `argocd_automated_set "$app" null` made the
+# handler read `policy=null` out of this function's frame and "restore" that,
+# leaving automated sync switched off. Invisible by inspection, so pinned.
+policy='{"prune":true,"selfHeal":true}'
+app='caller-app'
+kubectl() { :; }
+argocd_automated_set some-other-app null >/dev/null 2>&1
+if [ "$policy" = '{"prune":true,"selfHeal":true}' ]; then
+  ok "does not shadow a caller's \$policy"
+else
+  bad "does not shadow a caller's \$policy (became '$policy')"
+fi
+argocd_automated_get some-other-app >/dev/null 2>&1
+if [ "$app" = 'caller-app' ]; then
+  ok "does not shadow a caller's \$app"
+else
+  bad "does not shadow a caller's \$app (became '$app')"
+fi
+unset policy app
+
+unset -f kubectl
+
 # The psql/psql-super recipes assemble their QUERY argument in the justfile,
 # not here, so ops-lib stubs cannot reach that logic. `just --dry-run` renders
 # the recipe body (to stderr) without running it, which is enough to assert
