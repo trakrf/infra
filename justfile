@@ -100,6 +100,10 @@ aws: (_backend-conf "terraform/aws")
     @tofu -chdir=terraform/aws apply tfplan
 
 # Plan and apply Azure infrastructure (AKS, ACR, Azure DNS)
+# Stack is deprovisioned: this rebuilds it. Afterwards, re-point the
+# AZURE_CLIENT_ID secret at the recreated app registration and set repository
+# variable AZURE_STACK_ACTIVE=true to un-skip the terraform-azure plan check —
+# see the header of .github/workflows/terraform-azure.yml.
 azure: (_backend-conf "terraform/azure")
     @echo "Planning Azure infrastructure..."
     @tofu -chdir=terraform/azure init -backend-config=backend.conf

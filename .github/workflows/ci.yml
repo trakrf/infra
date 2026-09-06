@@ -42,6 +42,21 @@ jobs:
       - run: ./scripts/test-check-doc-paths.sh
       - run: ./scripts/check-doc-paths.sh
 
+  pr-cloud-auth:
+    # Gives the workflow files a consumer. terraform-azure.yml's plan job spent
+    # a month red on every PR that triggered it — the AKS burn-down deleted the
+    # app registration it logs in as, and nothing surfaced that, because the
+    # check is not required and the path filter hid it on every other PR
+    # (TRA-1220). A cloud login fails for reasons outside the repo, so it is the
+    # one step that can strand a check red with no commit to blame; this asserts
+    # each one is gated on a switch that can be flipped without a PR.
+    name: pr cloud auth gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/test-check-pr-cloud-auth.sh
+      - run: ./scripts/check-pr-cloud-auth.sh
+
   tofu-fmt:
     name: tofu fmt
     runs-on: ubuntu-latest
