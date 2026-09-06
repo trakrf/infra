@@ -20,6 +20,10 @@ run ./scripts/test-db-grants.sh
 run ./scripts/test-check-doc-paths.sh
 run ./scripts/check-doc-paths.sh
 
+# --- workflow cloud-auth gates (job: pr-cloud-auth) ---
+run ./scripts/test-check-pr-cloud-auth.sh
+run ./scripts/check-pr-cloud-auth.sh
+
 # --- tofu fmt (job: tofu-fmt) ---
 run tofu fmt -check -recursive terraform
 

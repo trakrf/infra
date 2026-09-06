@@ -1,4 +1,26 @@
 name: terraform-azure
+#
+# DORMANT while the AKS stack is deprovisioned (TRA-976, 2026-06-10). The
+# burn-down destroyed the `trakrf-infra-ci` app registration this workflow logs
+# in as, so `azure/login` fails with AADSTS700016 before any Terraform runs, and
+# `terraform/azure` state is empty — even a working login would only ever plan a
+# full create of a stack that is deliberately gone. The `plan` job stood red on
+# every PR touching terraform/azure/ for a month before anyone noticed, because
+# it is not a required check (TRA-1220).
+#
+# To bring it back when Azure returns:
+#   1. Re-apply terraform/azure/ci.tf to recreate the app registration, its two
+#      federated credentials and the Contributor assignment. Import the
+#      preserved DNS zone and rg-trakrf-demo-ussc first — see TRA-976.
+#   2. Set the AZURE_CLIENT_ID repository secret to the new application's id.
+#   3. Set repository variable AZURE_STACK_ACTIVE=true. No PR needed.
+#
+# Until step 3, `plan` skips and reports neutral rather than red. Credential-free
+# validation of terraform/azure is unaffected: ci.yml runs `tofu fmt` and
+# `tofu validate` over that root on every PR, and always has.
+#
+# scripts/check-pr-cloud-auth.sh enforces that a PR-reachable cloud login always
+# carries a switch like this one.
 
 on:
   pull_request:
@@ -33,7 +55,9 @@ env:
 
 jobs:
   plan:
-    if: github.event_name == 'pull_request'
+    # AZURE_STACK_ACTIVE is unset while the stack is deprovisioned, so this
+    # skips (neutral) instead of failing at azure/login. See the header.
+    if: github.event_name == 'pull_request' && vars.AZURE_STACK_ACTIVE == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
