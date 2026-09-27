@@ -58,6 +58,9 @@ for c in cert-manager-config traefik-config trakrf-backend trakrf-db; do
   done
 done
 
+# --- backend IngressRoute keeps /metrics private (job: backend-ingress) ---
+run ./scripts/test-backend-ingress.sh
+
 # --- helm-mosquitto (job: helm-mosquitto, GKE-only) ---
 run helm lint helm/trakrf-mosquitto -f helm/trakrf-mosquitto/values.yaml -f helm/trakrf-mosquitto/values-gke.yaml
 run helm template helm/trakrf-mosquitto -f helm/trakrf-mosquitto/values.yaml -f helm/trakrf-mosquitto/values-gke.yaml \
