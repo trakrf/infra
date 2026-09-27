@@ -85,6 +85,16 @@ jobs:
       - run: tofu validate
         working-directory: terraform/${{ matrix.dir }}
 
+  backend-ingress:
+    # The backend serves Prometheus /metrics on its API router. Prometheus
+    # scrapes the Service in-cluster; the public IngressRoute must not route it.
+    name: backend ingress excludes /metrics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: ./scripts/test-backend-ingress.sh
+
   helm:
     name: helm lint + template (${{ matrix.chart }} / ${{ matrix.cluster }})
     runs-on: ubuntu-latest
