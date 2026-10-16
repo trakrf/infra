@@ -17,7 +17,7 @@ resource "cloudflare_record" "root" {
 resource "cloudflare_record" "www" {
   zone_id = cloudflare_zone.domain.id
   name    = "www"
-  content = var.domain_name
+  content = cloudflare_pages_project.www.subdomain
   type    = "CNAME"
   proxied = true
 }

@@ -40,6 +40,14 @@ resource "cloudflare_pages_domain" "www_custom" {
   domain       = var.domain_name
 }
 
+# www alias. Without its own Pages custom domain the proxied www record reaches
+# Pages with a Host header the project doesn't serve, and the edge returns 522.
+resource "cloudflare_pages_domain" "www_alias" {
+  account_id   = var.account_id
+  project_name = cloudflare_pages_project.www.name
+  domain       = "www.${var.domain_name}"
+}
+
 # Custom domain for preview subdomain
 resource "cloudflare_pages_domain" "preview_custom" {
   account_id   = var.account_id
