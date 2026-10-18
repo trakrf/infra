@@ -17,6 +17,18 @@ data "terraform_remote_state" "azure" {
 
     profile = "cloudflare-r2"
   }
+
+  # azure.tfstate is empty while the AKS stack is deprovisioned, but the
+  # aks.trakrf.app zone is kept (state-removed) with these nameservers. Fall
+  # back to them so the delegation stays put and this root still plans.
+  defaults = {
+    dns_nameservers = [
+      "ns1-03.azure-dns.com",
+      "ns2-03.azure-dns.net",
+      "ns3-03.azure-dns.org",
+      "ns4-03.azure-dns.info",
+    ]
+  }
 }
 
 # Create NS records in Cloudflare to delegate aks.trakrf.app to Azure DNS.
