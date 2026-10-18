@@ -38,8 +38,9 @@ namespaces:
 # emailGuardEnabled            — TRA-972: renders the RESEND_API_KEY PreSync guard
 #                                Job, which fails the sync loudly if the email key
 #                                is empty/missing in this env. preview=true; prod
-#                                stays false until its key is injected (an active
-#                                guard blocks live prod syncs). Default off.
+#                                =true since its key was injected 2026-06-10 (an
+#                                active guard with no key blocks live prod syncs).
+#                                Default off.
 # orgCreateNotifyAddr          — TRA-1040: backend ORG_CREATE_NOTIFY_ADDR. Routes
 #                                org signup/create/delete notices to this single
 #                                address and skips the all-superadmins fan-out.
@@ -133,16 +134,12 @@ envs:
     # 2026-05-30 v1.2.0 dry run). promote-prod (imagetools re-tag, no rebuild)
     # stays the sole audited publish-:prod gate; cutover = promote :prod →
     # image-updater rolls the digest, no infra PR. Bootstrap falls back to
-    # values-gke.yaml's sha tag until the first pin. environmentLabel stays
-    # "GKE pre-prod" through the dry-run window; flips to empty at cutover.
+    # values-gke.yaml's sha tag until the first pin. environmentLabel is empty
+    # on prod (no env banner) since the 2026-05-30 cutover.
     imageTag: ""
     environmentLabel: ""
-    # TRA-843: held at "3600" so preview=900 can apply alone NOW (the GKE apply
-    # is cluster-wide — one render materializes both envs). The running :prod
-    # image is still pre-#416 (v1.1.1, /auth/refresh → 404), so prod=900 would
-    # mean 15-min tokens with no refresh. Returns to "900" at the cutover roll-
-    # forward (after the next soak), once prod is on a ≥#416 image — verified by
-    # kubectl digest check before that apply.
+    # TRA-843: 15-min tokens, same as preview. Safe because prod runs a ≥#416
+    # image with /auth/refresh; it was held at "3600" until the cutover.
     jwtExpirationSeconds: "900"
     dbCluster:
       enabled: true
