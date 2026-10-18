@@ -101,12 +101,18 @@ spec:
               -- would abort the whole Job under ON_ERROR_STOP=1. There the
               -- ledger instead inherits the default privileges set above,
               -- write included, until the next db-chart upgrade runs this.
-              DO $$
+              --
+              -- The dollar-quote is named, never anonymous: Kubernetes
+              -- collapses a doubled `$` to one in a container command before
+              -- the shell runs, so an anonymous quote reaches psql as `DO $`
+              -- and the Job fails. Not even this comment may contain one —
+              -- scripts/test-db-grants.sh checks the command post-expansion.
+              DO $grant$
               BEGIN
                 IF to_regclass('trakrf.schema_migrations') IS NOT NULL THEN
                   EXECUTE 'GRANT SELECT ON trakrf.schema_migrations TO "{{ .Values.roles.app }}"';
                   EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON trakrf.schema_migrations FROM "{{ .Values.roles.app }}"';
                 END IF;
               END
-              $$;
+              $grant$;
               SQL
