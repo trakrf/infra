@@ -45,6 +45,84 @@ render() {
   esac
 }
 
+# Reads the render file named by $1; prints "ok|<name>" or "bad|<name>" per check.
+#
+# Kubernetes rewrites a container's command and args before the process sees
+# them: `$(NAME)` becomes that env var's value and `$$` becomes a literal `$`.
+# A quoted heredoc stops only the shell from expanding — by then the kubelet
+# has already turned `DO $$` into `DO $`, and psql rejects it. `helm template`
+# shows the text before that rewrite, so grepping the render cannot see this;
+# these checks apply a port of the kubelet's expansion
+# (k8s.io/kubernetes third_party/forked/golang/expansion) and assert on what
+# psql would actually be handed.
+kube_expanded_checks() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+try:
+    import yaml
+except ImportError:
+    print("bad|PyYAML is required (pip install pyyaml)")
+    sys.exit(0)
+
+
+def expand(text, defined):
+    """Kubernetes' command/args expansion. An undefined $(NAME) is left as
+    written, and a `$` followed by anything other than `$` or `(` passes
+    through, which is why shell `$(seq 1 30)` and `$i` survive it."""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "$" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt == "$":
+                out.append("$")
+                i += 2
+                continue
+            if nxt == "(":
+                close = text.find(")", i + 2)
+                if close != -1:
+                    name = text[i + 2:close]
+                    out.append(defined.get(name, "$(" + name + ")"))
+                    i = close + 1
+                    continue
+            out.append("$" + nxt)
+            i += 2
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out)
+
+
+job = next(
+    (d for d in yaml.safe_load_all(open(sys.argv[1]))
+     if d and d.get("kind") == "Job"
+     and d["metadata"]["name"].endswith("-init-grants")),
+    None,
+)
+if job is None:
+    print("bad|renders the init-grants Job")
+    sys.exit(0)
+
+container = job["spec"]["template"]["spec"]["containers"][0]
+script = container["command"][-1]
+# The values are irrelevant; only whether a name is defined changes the result.
+defined = {e["name"]: "<" + e["name"] + ">" for e in container.get("env", [])}
+expanded = expand(script, defined)
+
+# Nothing in this script is meant for the kubelet, so any rewrite is a bug.
+print(("ok" if expanded == script else "bad")
+      + "|Kubernetes leaves the init-grants command unchanged")
+
+body = re.search(r"<<'SQL'\n(.*?)^SQL$", expanded, re.S | re.M)
+tags = re.findall(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", body.group(1) if body else "")
+balanced = (len(tags) >= 2 and len(tags) % 2 == 0
+            and tags[0::2] == tags[1::2])
+print(("ok" if balanced else "bad")
+      + "|psql receives balanced dollar-quotes (" + " ".join(tags) + ")")
+PY
+}
+
 for cluster in eks aks gke; do
   echo "init-grants SQL (${cluster}):"
 
@@ -80,6 +158,12 @@ for cluster in eks aks gke; do
   has "grants CRUD on all tables" \
       'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA trakrf'
   has "sets default privileges"        'ALTER DEFAULT PRIVILEGES FOR ROLE'
+
+  # What psql receives is not what helm renders: the kubelet expands the
+  # container command first. Checked separately below.
+  while IFS='|' read -r verdict name; do
+    if [ "$verdict" = ok ]; then ok "$name"; else bad "$name"; fi
+  done < <(kube_expanded_checks <(printf '%s' "$sql"))
 done
 
 echo
