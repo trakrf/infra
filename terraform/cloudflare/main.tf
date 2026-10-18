@@ -14,12 +14,39 @@ resource "cloudflare_record" "root" {
   proxied = true
 }
 
+# www exists only to be redirected to the apex below. The Pages project serves
+# the apex alone, so without the redirect www reaches Pages unrecognised → 522.
 resource "cloudflare_record" "www" {
   zone_id = cloudflare_zone.domain.id
   name    = "www"
   content = var.domain_name
   type    = "CNAME"
   proxied = true
+}
+
+resource "cloudflare_ruleset" "www_redirect" {
+  zone_id     = cloudflare_zone.domain.id
+  name        = "Redirect www to apex"
+  description = "301 www.${var.domain_name} to https://${var.domain_name}, keeping path and query"
+  kind        = "zone"
+  phase       = "http_request_dynamic_redirect"
+
+  rules {
+    ref         = "redirect_www"
+    action      = "redirect"
+    expression  = "(http.host eq \"www.${var.domain_name}\")"
+    description = "Redirect www to apex"
+
+    action_parameters {
+      from_value {
+        status_code = 301
+        target_url {
+          expression = "concat(\"https://${var.domain_name}\", http.request.uri.path)"
+        }
+        preserve_query_string = true
+      }
+    }
+  }
 }
 
 # app.trakrf.id — prod app origin on GKE, orange-clouded (TRA-375 cutover).

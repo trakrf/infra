@@ -33,11 +33,17 @@ resource "cloudflare_pages_project" "www" {
   }
 }
 
-# Custom domain for the Pages project (production)
-resource "cloudflare_pages_domain" "www_custom" {
+# Custom domain for the Pages project (production) — the apex. www is not a
+# Pages domain; it 301s here (cloudflare_ruleset.www_redirect).
+resource "cloudflare_pages_domain" "apex_custom" {
   account_id   = var.account_id
   project_name = cloudflare_pages_project.www.name
   domain       = var.domain_name
+}
+
+moved {
+  from = cloudflare_pages_domain.www_custom
+  to   = cloudflare_pages_domain.apex_custom
 }
 
 # Custom domain for preview subdomain
