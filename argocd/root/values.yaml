@@ -31,15 +31,16 @@ namespaces:
 # mqttIp                       — MQTT broker LB IP (Tofu-injected on GKE).
 # mqttEnabled                  — TRA-920: wires MQTT_URL onto the backend so the
 #                                in-backend Go subscriber starts ingesting from
-#                                mqtt.<env>.gke.trakrf.id. preview=true; prod=false
-#                                until cutover (see TRA-920 prod checklist). GKE-only
+#                                mqtt.<env>.gke.trakrf.id. preview=true; prod=true
+#                                since 2026-10-18 (TRA-1282). GKE-only
 #                                (broker host is .gke.); harmless if ever set on a
 #                                cluster whose backend image predates TRA-900.
 # emailGuardEnabled            — TRA-972: renders the RESEND_API_KEY PreSync guard
 #                                Job, which fails the sync loudly if the email key
 #                                is empty/missing in this env. preview=true; prod
-#                                stays false until its key is injected (an active
-#                                guard blocks live prod syncs). Default off.
+#                                =true since its key was injected 2026-06-10 (an
+#                                active guard with no key blocks live prod syncs).
+#                                Default off.
 # orgCreateNotifyAddr          — TRA-1040: backend ORG_CREATE_NOTIFY_ADDR. Routes
 #                                org signup/create/delete notices to this single
 #                                address and skips the all-superadmins fan-out.
@@ -121,7 +122,10 @@ envs:
     ingressEnabled: true
     appTrakrfIdHost: app.trakrf.id
     mqttIp: ""
-    mqttEnabled: false  # flip to true at prod cutover — see TRA-920 prod checklist
+    # Enabled 2026-10-18 for the first prod fixed reader (TRA-1282). Prod is
+    # 1 replica with mqtt.host set → maxSurge:0 rollout guard, so every prod
+    # rollout has a brief 502 window until $share allows >1 replica (TRA-907).
+    mqttEnabled: true
     emailGuardEnabled: true  # prod RESEND_API_KEY injected 2026-06-10, so the PreSync guard passes (TRA-972)
     # imageTag="" — prod is image-updater-tracked (TRA-351 option b): the
     # trakrf-backend-prod ImageUpdater CR pins the resolved :prod DIGEST into
@@ -130,16 +134,12 @@ envs:
     # 2026-05-30 v1.2.0 dry run). promote-prod (imagetools re-tag, no rebuild)
     # stays the sole audited publish-:prod gate; cutover = promote :prod →
     # image-updater rolls the digest, no infra PR. Bootstrap falls back to
-    # values-gke.yaml's sha tag until the first pin. environmentLabel stays
-    # "GKE pre-prod" through the dry-run window; flips to empty at cutover.
+    # values-gke.yaml's sha tag until the first pin. environmentLabel is empty
+    # on prod (no env banner) since the 2026-05-30 cutover.
     imageTag: ""
     environmentLabel: ""
-    # TRA-843: held at "3600" so preview=900 can apply alone NOW (the GKE apply
-    # is cluster-wide — one render materializes both envs). The running :prod
-    # image is still pre-#416 (v1.1.1, /auth/refresh → 404), so prod=900 would
-    # mean 15-min tokens with no refresh. Returns to "900" at the cutover roll-
-    # forward (after the next soak), once prod is on a ≥#416 image — verified by
-    # kubectl digest check before that apply.
+    # TRA-843: 15-min tokens, same as preview. Safe because prod runs a ≥#416
+    # image with /auth/refresh; it was held at "3600" until the cutover.
     jwtExpirationSeconds: "900"
     dbCluster:
       enabled: true
