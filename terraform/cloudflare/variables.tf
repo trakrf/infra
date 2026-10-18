@@ -23,6 +23,9 @@ variable "railway_app_prod_endpoint" {
 variable "eks_nlb_hostname" {
   type        = string
   description = "AWS NLB hostname fronting the EKS Traefik Service (eks.trakrf.app CNAME target)"
+  # Last NLB before the EKS stack was destroyed; the records still point here.
+  # Defaulted so this root plans without it while EKS is deprovisioned.
+  default = "a8b4ab4f6dc1044ab89870ce15163b0d-fb4cf2308b034ba3.elb.us-east-2.amazonaws.com"
 }
 
 variable "gke_traefik_lb_ip" {
