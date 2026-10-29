@@ -11,7 +11,9 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ .host }}`)
+    # /metrics is served on the API router but must never be public;
+    # Prometheus scrapes the Service in-cluster (see servicemonitor.yaml).
+    - match: Host(`{{ .host }}`) && !Path(`/metrics`)
       kind: Rule
       middlewares:
         {{- range .middlewares }}
