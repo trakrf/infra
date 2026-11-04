@@ -367,6 +367,9 @@ argo-sync APP:
 
 # Install kube-prometheus-stack into monitoring namespace (direct helm, not ArgoCD)
 monitoring-bootstrap CLUSTER:
+    @# Alertmanager mounts this Secret for its Slack webhook; without it the pod
+    @# never starts. Create it first with `just alertmanager-secrets`.
+    @kubectl get secret alertmanager-slack -n monitoring >/dev/null 2>&1 || { echo "ERROR: Secret monitoring/alertmanager-slack missing — run: just alertmanager-secrets"; exit 1; }
     @echo "Adding prometheus-community Helm repo..."
     @helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     @helm repo update prometheus-community
@@ -390,6 +393,17 @@ monitoring-bootstrap CLUSTER:
     @kubectl apply --server-side --force-conflicts -n monitoring -f helm/monitoring/manifests/
     @echo "Applying {{CLUSTER}}-specific manifests (Grafana IngressRoute with {{CLUSTER}} host)..."
     @kubectl apply --server-side --force-conflicts -n monitoring -f helm/monitoring/manifests-{{CLUSTER}}/
+
+# Create or rotate the Slack incoming-webhook Secret Alertmanager posts through.
+# Alertmanager re-reads the mounted file on each notification, so a rotation
+# needs no restart (allow ~1m for the kubelet to refresh the mount).
+alertmanager-secrets:
+    @kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+    @test -n "${ALERTMANAGER_SLACK_WEBHOOK_URL:-}" || { echo "ERROR: ALERTMANAGER_SLACK_WEBHOOK_URL not set in .env.local"; exit 1; }
+    @kubectl create secret generic alertmanager-slack -n monitoring \
+      --from-literal=webhook-url="${ALERTMANAGER_SLACK_WEBHOOK_URL}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    @echo "alertmanager-slack Secret applied in monitoring."
 
 # Fetch Grafana admin password
 grafana-password:

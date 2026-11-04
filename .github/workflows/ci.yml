@@ -95,6 +95,24 @@ jobs:
       - uses: azure/setup-helm@v4
       - run: ./scripts/test-backend-ingress.sh
 
+  alertmanager-config:
+    # helm/monitoring/ is values-only, so the helm matrix never sees it. The
+    # chart default routes every alert to "null"; this keeps a real receiver
+    # from regressing to that, and catches an invalid config before it reaches
+    # the cluster, where the operator would keep the last good one silently.
+    name: alertmanager config routes to a receiver
+    runs-on: ubuntu-latest
+    env:
+      AMTOOL_VERSION: 0.28.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install amtool
+        run: |
+          curl -sSfL "https://github.com/prometheus/alertmanager/releases/download/v${AMTOOL_VERSION}/alertmanager-${AMTOOL_VERSION}.linux-amd64.tar.gz" \
+            | sudo tar xz -C /usr/local/bin --strip-components=1 "alertmanager-${AMTOOL_VERSION}.linux-amd64/amtool"
+          python3 -c 'import yaml' || sudo apt-get install -y python3-yaml
+      - run: ./scripts/test-alertmanager-config.sh
+
   helm:
     name: helm lint + template (${{ matrix.chart }} / ${{ matrix.cluster }})
     runs-on: ubuntu-latest
