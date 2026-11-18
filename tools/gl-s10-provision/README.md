@@ -67,6 +67,11 @@ Read commands the app also sends: `0x0f` timezone (`UTC-8`), `0x13`
 | `verify.py`     | Broker log connect line plus a `reads` message after it → PASS/FAIL. |
 | `cli.py`        | `ca`, `info`, `provision`, `recert`.                                |
 
+`scripts/snoop_decode.py` decodes an Android btsnoop capture of the GL.iNet
+app, which is how the command map above was read. Run
+`uv run python scripts/snoop_decode.py LOG BLE_MAC`; its docstring says how to
+capture.
+
 ## Why the cert step looks like this
 
 - **Only the intermediate goes in `ca.crt`.** The unit pins that one cert, and
