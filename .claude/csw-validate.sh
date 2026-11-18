@@ -20,6 +20,9 @@ run ./scripts/test-db-grants.sh
 run ./scripts/test-check-doc-paths.sh
 run ./scripts/check-doc-paths.sh
 
+# --- GL-S10 provisioning tool (job: gl-s10-provision) ---
+run uv run --directory tools/gl-s10-provision pytest -q
+
 # --- workflow cloud-auth gates (job: pr-cloud-auth) ---
 run ./scripts/test-check-pr-cloud-auth.sh
 run ./scripts/check-pr-cloud-auth.sh
