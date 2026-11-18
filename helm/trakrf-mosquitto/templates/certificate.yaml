@@ -6,6 +6,9 @@ metadata:
     {{- include "trakrf-mosquitto.labels" . | nindent 4 }}
 spec:
   secretName: {{ .Values.certSecret }}
+  {{- with .Values.certRenewBefore }}
+  renewBefore: {{ . }}
+  {{- end }}
   # Host-specific cert, not wildcard. The GL-S10's minimal mbedTLS build has
   # inconsistent wildcard-SAN matching; host-specific avoids the issue.
   commonName: {{ .Values.hostname }}
