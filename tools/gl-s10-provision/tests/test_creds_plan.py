@@ -54,18 +54,19 @@ def test_masker_redacts_a_uri_password_it_was_never_told_about():
     assert creds.Masker()("mqtt://:@127.0.0.1:1883") == "mqtt://:@127.0.0.1:1883"
 
 
-def test_provision_order_without_wifi():
+def test_provision_is_mqtt_then_cert():
     steps = plan.provision("mqtts://u:p@h:8883", "C4DEE229A176", "trakrf.id",
-                           "http://10.0.0.5:1/t/", wifi=None)
+                           "http://10.0.0.5:1/t/")
     assert [s.cmd for s in steps] == [p.SET_BROKER, p.SET_CLIENT_ID, p.SET_TOPICS, p.CERT_URL]
     assert steps[0].secret and not steps[1].secret
 
 
-def test_provision_order_with_wifi_puts_wifi_after_cert():
-    steps = plan.provision("mqtts://u:p@h:8883", "C4DEE229A176", "trakrf.id",
-                           "http://10.0.0.5:1/t/", wifi=("ssid", "pw"))
+def test_wifi_join_is_mqtt_then_wifi_and_no_cert():
+    # Hardware: in config mode the unit saves the SSID but does not join it, and
+    # refuses 0x1a (status 01) with no network. Certs come in pass 2 (recert).
+    steps = plan.wifi_join("mqtts://u:p@h:8883", "C4DEE229A176", "trakrf.id", ("ssid", "pw"))
     assert [s.cmd for s in steps] == [p.SET_BROKER, p.SET_CLIENT_ID, p.SET_TOPICS,
-                                      p.CERT_URL, p.WIFI_CONNECT]
+                                      p.WIFI_CONNECT]
     assert steps[-1].secret
 
 
@@ -84,6 +85,7 @@ def test_expected_readback_matches_what_was_written():
 
 
 def test_no_plan_ever_contains_a_forbidden_command():
-    steps = plan.provision("mqtts://u:p@h:8883", "C4DEE229A176", "trakrf.id",
-                           "http://10.0.0.5:1/t/", wifi=("s", "p")) + plan.recert("http://x/t/")
+    steps = (plan.provision("mqtts://u:p@h:8883", "C4DEE229A176", "trakrf.id", "http://x/t/")
+             + plan.wifi_join("mqtts://u:p@h:8883", "C4DEE229A176", "trakrf.id", ("s", "p"))
+             + plan.recert("http://x/t/"))
     assert not {s.cmd for s in steps} & p.FORBIDDEN

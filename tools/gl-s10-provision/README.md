@@ -40,8 +40,18 @@ FE 01 | len u16 BE (whole frame) | count u8 | crc16 u16 BE | ciphertext
 | `0x1d`/`0x1e` | OTA / OTA status           | `0\n<firmware URL>` (unused here)         |
 | `0x21`        | device info                | —                                         |
 | `0x22`        | reboot / leave config mode | —                                         |
+| `0x23`        | factory reset (never sent) | —                                         |
 
-`0x0c`/`0x0d` are never sent. `protocol.Codec.encode` refuses them.
+`protocol.Codec.encode` refuses `0x0c`/`0x0d` and `0x23`:
+
+- `0x0c` writes an uplink-priority setting whose meaning is unknown. `0x0d` is
+  its read; the GL.iNet app sends it on every connect. It is banned along with
+  `0x0c` until that command is understood.
+- `0x23` is the app's factory reset. It is one id away from `0x22`, and a typo
+  must not be able to wipe a unit.
+
+Read commands the app also sends: `0x0f` timezone (`UTC-8`), `0x13`
+(`0\n04:00`) and `0x2a` (`1\n80\n48`). The meaning of the last two is unknown.
 
 ## Modules
 

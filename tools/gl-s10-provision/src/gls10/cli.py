@@ -5,9 +5,13 @@
   gls10 provision --mac <BLE MAC> --env preview [--ssid <ssid>]   (WIFI_PASS from env)
   gls10 recert    --mac <BLE MAC> --env preview
 
+A unit with a network (Ethernet) provisions in one pass. A Wi-Fi-only unit needs
+two: `provision --ssid` saves MQTT + Wi-Fi and reboots it onto Wi-Fi (exit 3);
+then put it back in pairing mode and run `recert`.
+
 Secrets never come from argv and are never printed: broker credentials are read
 from the cluster, the Wi-Fi password from WIFI_PASS. Requires ESPHOME_PROXY_HOST.
-Exit: 0 PASS, 1 FAIL, 2 usage, 75 radio busy.
+Exit: 0 PASS, 1 FAIL, 2 usage, 3 pass 1 of 2 done (re-pair, then recert), 75 radio busy.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from gls10 import protocol as p
 from gls10.certserver import CertServer, lan_ip_for
 from gls10.lock import RadioBusy, radio_lock
 
-EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_BUSY = 0, 1, 2, 75
+EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEXT_PASS, EXIT_BUSY = 0, 1, 2, 3, 75
 READBACK_LABELS = {p.GET_BROKER: "broker", p.GET_CLIENT_ID: "client id", p.GET_TOPICS: "topics"}
 
 
@@ -76,6 +80,11 @@ async def configure(sess, steps: list[plan.Step], expected: dict[int, list[str]]
         bad = [READBACK_LABELS[c] for c, want in expected.items() if got.get(c) != want]
         if bad:
             raise Fail(f"read-back mismatch: {', '.join(bad)}")
+    if server is None:  # Wi-Fi pass 1: nothing to fetch yet
+        t0 = time.time()
+        await sess.cmd(p.REBOOT, wait=3)
+        say("  0x22 reboot sent")
+        return t0
     say(f"== cert fetch (up to {fetch_timeout:.0f}s) ==")
     if await asyncio.to_thread(server.wait_all, fetch_timeout):
         say("  unit fetched ca.crt, client.crt, client.key")
@@ -162,6 +171,9 @@ def _write(args, proxy: str, mask: creds.Masker, say) -> int:
         mask.add(pw)
         wifi = (args.ssid, pw)
 
+    if wifi:
+        return _wifi_pass1(args, proxy, bc, cid, wifi, say)
+
     bundle, inter = certs.bundle_for(bc.host)
     say(f"ca.crt: {certs.describe(inter)}")
     serve_ip = args.serve_ip or lan_ip_for(proxy)
@@ -169,7 +181,7 @@ def _write(args, proxy: str, mask: creds.Masker, say) -> int:
     with CertServer(bundle, host=serve_ip, port=args.serve_port) as server:
         say(f"serving certs at {server.base_url}")
         if args.action == "provision":
-            steps = plan.provision(bc.uri, cid, args.topic_base, server.base_url, wifi)
+            steps = plan.provision(bc.uri, cid, args.topic_base, server.base_url)
             expected = plan.expected_config(bc.uri, cid, args.topic_base)
             reads_topic = p.topics(args.topic_base, cid)[1]
         else:
@@ -196,6 +208,24 @@ def _write(args, proxy: str, mask: creds.Masker, say) -> int:
     ok = fetched and result.passed
     say(f"{'PASS' if ok else 'FAIL'} {cid}")
     return EXIT_PASS if ok else EXIT_FAIL
+
+
+def _wifi_pass1(args, proxy: str, bc: creds.BrokerCreds, cid: str,
+                wifi: tuple[str, str], say) -> int:
+    from gls10.ble import Session
+
+    steps = plan.wifi_join(bc.uri, cid, args.topic_base, wifi)
+    expected = plan.expected_config(bc.uri, cid, args.topic_base)
+    with radio_lock("gls10-provision-wifi"):
+        asyncio.run(_ble(Session(proxy, args.mac, args.scan_seconds), steps, expected,
+                         None, 0, say))
+    say("== pass 1 of 2 done ==")
+    say(f"  MQTT settings and Wi-Fi {wifi[0]!r} saved; the unit is rebooting to join Wi-Fi.")
+    say("  It cannot fetch certs until it is on the network. Put it back in pairing mode")
+    say("  (hold Reset while powering on), then run:")
+    tb = "" if args.topic_base == "trakrf.id" else f" --topic-base {args.topic_base}"
+    say(f"    gls10 recert --mac {p.colon_mac(args.mac)} --env {args.env}{tb}")
+    return EXIT_NEXT_PASS
 
 
 async def _ble(sess, steps, expected, server, fetch_timeout, say) -> float:
