@@ -76,14 +76,28 @@ def frames_from_message(topic: str, payload: bytes, mac: str) -> list[Frame]:
     return out
 
 
-def observed_interval_ms(frames: list[Frame]) -> int | None:
-    """Median gap on the gateway that saw this frame kind most often."""
+def cluster_ms_for(interval_ms: int) -> int:
+    """Sightings closer than this are one advertising event.
+
+    On air, Bob at a 10 s interval reached each gateway as a burst of
+    sightings spread over up to ~300 ms, every ~10 s. Merging must stay well
+    under the interval, or a too-fast slot would merge into one event and pass.
+    """
+    return min(600, int(interval_ms * 0.3))
+
+
+def observed_interval_ms(frames: list[Frame], cluster_ms: int = 0) -> int | None:
+    """Median gap between advertising events on the gateway that saw the most."""
     by_gw: dict[str, list[int]] = {}
     for f in frames:
         by_gw.setdefault(f.gateway, []).append(f.ts_ms)
     best = max(by_gw.values(), key=len, default=[])
-    ts = sorted(set(best))
-    gaps = [b - a for a, b in zip(ts, ts[1:]) if b > a]
+    events: list[int] = []
+    for t in sorted(set(best)):
+        if not events or t - last >= cluster_ms:
+            events.append(t)
+        last = t
+    gaps = [b - a for a, b in zip(events, events[1:])]
     return int(statistics.median(gaps)) if gaps else None
 
 
@@ -111,9 +125,9 @@ def judge(frames: list[Frame], want: dict, window_s: float) -> Report:
         if not fs:
             rep.problems.append(f"no {kind} frames in {window_s:.0f}s")
             continue
-        iv = observed_interval_ms(fs)
-        rep.intervals[kind] = iv
         want_ms = s["interval_ms"]
+        iv = observed_interval_ms(fs, cluster_ms_for(want_ms))
+        rep.intervals[kind] = iv
         if iv is not None and iv < want_ms * 0.5:
             rep.problems.append(f"{kind} every ~{iv} ms, profile says {want_ms} ms")
         if kind == "ibeacon":

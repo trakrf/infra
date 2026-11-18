@@ -113,7 +113,10 @@ advertisement of that tag that any GL-S10 reports. It fails if:
 - no battery reading decodes, or it is outside 2000-3700 mV
 
 Intervals are measured per gateway, and the gateway that heard the tag most often
-is used. Gateways miss packets, so a measured interval is an upper bound. Give
+is used. Gateways miss packets, so a measured interval is an upper bound. A
+gateway also reports one advertising event as a burst of sightings within a few
+hundred ms (seen on Bob at 10 s), so sightings that close together count as one
+event. Give
 the window at least three telemetry intervals: the default 60 s is enough for 10 s.
 
 ## Connection quirks

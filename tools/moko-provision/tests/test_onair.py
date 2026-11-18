@@ -74,6 +74,36 @@ def test_gateways_are_not_mixed_when_measuring():
     assert onair.observed_interval_ms(frames({"info": 10000})) == 10000
 
 
+def bursty(gaps, gw="gw1", kind="info"):
+    ts, out = 0, []
+    for g in [0] + gaps:
+        ts += g
+        out.append(onair.classify(info_ad() if kind == "info" else ibeacon_ad(minor=1002), gw, ts))
+    return out
+
+
+# Live, gateway C8F09ED12E1E, Bob at a 10 s device-info interval: each advertising
+# event is reported as a burst of sightings within a few hundred ms.
+LIVE_10S_BURSTS = [50, 151, 47, 47, 47, 56, 48, 43, 9509, 53, 55, 25, 26, 40, 43, 9514, 52, 301, 9628]
+
+
+def test_bursts_count_as_one_event():
+    assert onair.observed_interval_ms(bursty(LIVE_10S_BURSTS), cluster_ms=600) > 9000
+    fs = bursty(LIVE_10S_BURSTS) + bursty([1000] * 60, kind="ibeacon")
+    rep = onair.judge(fs, WANT, 60)
+    assert rep.passed, rep.problems
+
+
+def test_old_two_second_telemetry_still_fails_with_clustering():
+    rep = onair.judge(bursty([2000] * 30) + bursty([1000] * 60, kind="ibeacon"), WANT, 60)
+    assert rep.problems == ["info every ~2000 ms, profile says 10000 ms"]
+
+
+def test_one_second_ibeacon_seen_half_a_second_apart_is_not_merged():
+    assert onair.observed_interval_ms(bursty([494, 506, 1000, 1000], kind="ibeacon"),
+                                      cluster_ms=300) == 753  # median of 494, 506, 1000, 1000
+
+
 def test_wrong_minor_and_leftover_tlm_and_missing_battery():
     rep = onair.judge(frames({"ibeacon": 1000, "tlm": 10000}, ibeacon={"minor": 1000}), WANT, 60)
     assert "no info frames in 60s" in rep.problems
