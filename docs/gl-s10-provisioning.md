@@ -88,9 +88,8 @@ It prints `PASS <client id>` and exits 0, or `FAIL` and exits 1.
 ### Wi-Fi only: two passes
 
 In config mode a unit saves a Wi-Fi network but does not join it. It joins only
-after it reboots out of config mode. Until then it has no network, so it refuses
-the cert URL (`0x1a` returns status 01). An out-of-box Wi-Fi unit therefore
-needs two passes.
+after it reboots out of config mode. Until then it has no network, so it cannot
+download its certs. An out-of-box Wi-Fi unit therefore needs two passes.
 
 **Pass 1** saves MQTT and Wi-Fi, then reboots the unit onto Wi-Fi. The password
 is read from `WIFI_PASS`, never from the command line:
@@ -145,9 +144,13 @@ the same intermediate, and then nothing needs to happen.
 - **Certs never fetched:** the unit could not reach `http://<this machine>:<port>/`.
   Check it is on the same LAN and nothing blocks inbound HTTP. Pick the
   interface explicitly with `--serve-ip` and the port with `--serve-port`.
-- **`0x1a cert URL ...: status 01`:** the unit has no network. On a Wi-Fi unit
-  that means pass 1 has not run, or the unit did not join: check the SSID and
-  password, then run pass 1 again.
+- **`0x1a cert URL ...: status 01`:** on its own, nothing. Some units answer
+  `0x1a` with 01 and still download all three files, so the tool goes by the
+  downloads (the `http:` lines), not the status. If the downloads never come
+  and it is a Wi-Fi unit, it is probably not on the network: pass 1 has not run,
+  or it did not join. Check the SSID and password, then run pass 1 again. A
+  freshly power-cycled unit can also need a few seconds to rejoin Wi-Fi before
+  it can fetch.
 - **Fetched, but no broker connect:** check the intermediate (`gls10 ca`) and
   the broker logs:
   `kubectl -n trakrf-preview logs deploy/trakrf-mosquitto -c mosquitto | grep <client id>`.

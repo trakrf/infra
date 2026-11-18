@@ -57,6 +57,10 @@ async def write_steps(sess, steps: list[plan.Step], say: Callable[[str], None]) 
     for st in steps:
         r = await sess.cmd(st.cmd, st.data, wait=st.wait)
         shown = "<secret>" if st.secret else repr(st.data.decode("utf-8", "replace"))
+        if r is not None and not r.ok and st.status_advisory and r.crc_ok:
+            say(f"  0x{st.cmd:02x} {st.label} {shown}: status {r.body[:1].hex() or '-'} "
+                f"(not decisive; the cert downloads are)")
+            continue
         if r is None or not r.ok:
             why = "no reply" if r is None else f"status {r.body[:1].hex() or '-'} crc_ok={r.crc_ok}"
             raise Fail(f"0x{st.cmd:02x} {st.label} {shown}: {why}")
@@ -188,16 +192,20 @@ def _write(args, proxy: str, mask: creds.Masker, say) -> int:
             steps, expected = plan.recert(server.base_url), {}
             reads_topic = p.topics(args.topic_base, cid)[1]
 
-        with verify.ReadsWatcher(bc, reads_topic) as watcher:
-            with radio_lock(f"gls10-{args.action}"):
-                t0 = asyncio.run(_ble(Session(proxy, args.mac, args.scan_seconds), steps,
-                                      expected, server, args.fetch_timeout, say))
-            say(f"== verify on {bc.host} (up to {args.verify_timeout:.0f}s) ==")
-            result = verify.wait_for_unit(args.env, cid, int(t0), watcher,
-                                          args.verify_timeout, say)
+        try:
+            with verify.ReadsWatcher(bc, reads_topic) as watcher:
+                with radio_lock(f"gls10-{args.action}"):
+                    t0 = asyncio.run(_ble(Session(proxy, args.mac, args.scan_seconds), steps,
+                                          expected, server, args.fetch_timeout, say))
+                say(f"== verify on {bc.host} (up to {args.verify_timeout:.0f}s) ==")
+                result = verify.wait_for_unit(args.env, cid, int(t0), watcher,
+                                              args.verify_timeout, say)
+        finally:
+            # Printed on failure too: whether the unit fetched anything is the
+            # first question when a cert step goes wrong.
+            for line in server.log:
+                say(f"  http: {line}")
         fetched = server.fetched >= set(bundle)
-        for line in server.log:
-            say(f"  http: {line}")
 
     say("== result ==")
     say(f"  certs fetched:     {'yes' if fetched else 'NO'}")
