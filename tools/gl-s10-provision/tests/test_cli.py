@@ -156,3 +156,31 @@ def test_provision_with_ssid_stops_after_pass_1_and_names_the_next_command(
     assert p.CERT_URL not in sent and p.WIFI_CONNECT in sent
     assert f"gls10 recert --mac {MAC} --env preview" in out
     assert "wifi-pw" not in out and "broker-pw" not in out
+
+
+def test_cert_url_status_01_is_not_fatal_the_downloads_decide():
+    # Hardware: 0CB8151E683A answered 0x1a with status 01 and still GET all three files.
+    unit = FakeUnit(refuse={p.CERT_URL})
+    _, lines = run(unit, plan.recert(URL), {})
+    assert unit.sent == READS + [p.CERT_URL, p.REBOOT]
+    assert any("not decisive" in ln for ln in lines)
+
+
+def test_cert_url_with_no_reply_is_still_fatal():
+    class Silent(FakeUnit):
+        async def cmd(self, cmd, data=b"", wait=6.0):
+            if cmd == p.CERT_URL:
+                self.sent.append(cmd)
+                return None
+            return await super().cmd(cmd, data, wait)
+
+    unit = Silent()
+    with pytest.raises(cli.Fail, match="no reply"):
+        run(unit, plan.recert(URL), {})
+    assert p.REBOOT not in unit.sent
+
+
+def test_cert_url_status_01_with_no_downloads_ends_in_fail_path():
+    unit = FakeUnit(refuse={p.CERT_URL})
+    _, lines = run(unit, plan.recert(URL), {}, FakeServer(fetched=False))
+    assert any("not yet fetched" in ln for ln in lines)

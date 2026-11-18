@@ -26,10 +26,16 @@ class Step:
     data: bytes
     secret: bool = False  # never echo the payload
     wait: float = 6.0
+    # The reply status does not decide success; something else does (see cert_step).
+    status_advisory: bool = False
 
 
 def cert_step(base_url: str) -> Step:
-    return Step("cert URL", p.CERT_URL, p.cert_url_payload(base_url), wait=10.0)
+    # 0x1a's status is not reliable. On hardware a unit replied 01 within 1.3s
+    # and still fetched all three files (200s). The three GETs on the cert
+    # server are what count, and the CLI waits for exactly those.
+    return Step("cert URL", p.CERT_URL, p.cert_url_payload(base_url), wait=10.0,
+                status_advisory=True)
 
 
 def _mqtt_steps(uri: str, cid: str, topic_base: str) -> list[Step]:
