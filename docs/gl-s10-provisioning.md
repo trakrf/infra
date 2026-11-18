@@ -59,32 +59,59 @@ Read-only first, to confirm the right unit and a healthy link:
 uv run gls10 info --mac C4:DE:E2:29:A1:76
 ```
 
-Then provision it. Add `--ssid` only for a Wi-Fi unit. The password is read
-from `WIFI_PASS`, never from the command line:
+Then provision it. How depends on whether the unit already has a network.
+
+### Ethernet: one pass
 
 ```sh
 uv run gls10 provision --mac C4:DE:E2:29:A1:76 --env preview
-WIFI_PASS='...' uv run gls10 provision --mac 0C:B8:15:1E:68:3A --env preview --ssid myssid
 ```
 
-The run does the following, in order, and stops before the reboot if any write is refused
-or reads back wrong:
+The run does the following, in order, and stops before the reboot if any write
+is refused or reads back wrong:
 
 1. Device info and current config (read-only).
 2. Broker URI (`0x07`), client id (`0x27`), topics (`0x0a`).
 3. Cert URL (`0x1a`): the unit downloads `ca.crt`, `client.crt` and `client.key`
-   from a temporary HTTP server on this machine.
-4. Wi-Fi (`0x01`), if `--ssid` was given.
-5. Read-back of broker, client id and topics against what was written.
-6. Wait for the three cert downloads (`--fetch-timeout`, default 60 s), then
-   reboot (`0x22`). A networked unit fetches within seconds of `0x1a`, while
-   still in config mode. If the downloads have not happened by the timeout, the
-   tool reboots anyway, keeps serving, and reports `certs fetched: NO`.
-7. Verify on the broker (`--verify-timeout`, default 180 s): the broker logs
-   the client id connecting after the reboot, *and* a message arrives on its
+   from a temporary HTTP server on this machine, within seconds and while still
+   in config mode.
+4. Read-back of broker, client id and topics against what was written.
+5. Wait for the three cert downloads (`--fetch-timeout`, default 60 s), then
+   reboot (`0x22`). If the downloads have not happened by the timeout, the tool
+   reboots anyway, keeps serving, and reports `certs fetched: NO`.
+6. Verify on the broker (`--verify-timeout`, default 180 s): the broker logs the
+   client id connecting after the reboot, *and* a message arrives on its
    `reads` topic after that connect.
 
 It prints `PASS <client id>` and exits 0, or `FAIL` and exits 1.
+
+### Wi-Fi only: two passes
+
+In config mode a unit saves a Wi-Fi network but does not join it. It joins only
+after it reboots out of config mode. Until then it has no network, so it refuses
+the cert URL (`0x1a` returns status 01). An out-of-box Wi-Fi unit therefore
+needs two passes.
+
+**Pass 1** saves MQTT and Wi-Fi, then reboots the unit onto Wi-Fi. The password
+is read from `WIFI_PASS`, never from the command line:
+
+```sh
+WIFI_PASS='...' uv run gls10 provision --mac 0C:B8:15:8F:35:92 --env preview --ssid myssid
+```
+
+This writes broker, client id, topics and Wi-Fi (`0x01`), reads them back and
+reboots. It exits 3 and prints the command for pass 2. There is nothing to
+verify on the broker yet, because the unit has no certs.
+
+**Pass 2:** put the unit back in pairing mode. It stays on Wi-Fi while in
+pairing mode. Then run the cert step:
+
+```sh
+uv run gls10 recert --mac 0C:B8:15:8F:35:92 --env preview
+```
+
+This is the same as `recert` below: cert URL, downloads, reboot and broker
+verify. It ends in `PASS`.
 
 ## Re-cert after the broker's intermediate changes
 
@@ -117,8 +144,10 @@ the same intermediate, and then nothing needs to happen.
   the holder. Nothing was sent.
 - **Certs never fetched:** the unit could not reach `http://<this machine>:<port>/`.
   Check it is on the same LAN and nothing blocks inbound HTTP. Pick the
-  interface explicitly with `--serve-ip` and the port with `--serve-port`. A
-  Wi-Fi unit needs `--ssid` before it has any network at all.
+  interface explicitly with `--serve-ip` and the port with `--serve-port`.
+- **`0x1a cert URL ...: status 01`:** the unit has no network. On a Wi-Fi unit
+  that means pass 1 has not run, or the unit did not join: check the SSID and
+  password, then run pass 1 again.
 - **Fetched, but no broker connect:** check the intermediate (`gls10 ca`) and
   the broker logs:
   `kubectl -n trakrf-preview logs deploy/trakrf-mosquitto -c mosquitto | grep <client id>`.

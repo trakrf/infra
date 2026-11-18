@@ -54,10 +54,13 @@ class FakeServer:
         return len(self.fetched) == 3
 
 
-def run(unit, steps, expected, server=None):
+_DEFAULT = object()
+
+
+def run(unit, steps, expected, server=_DEFAULT):
     lines = []
-    t0 = asyncio.run(cli.configure(unit, steps, expected, server or FakeServer(), 0,
-                                   lines.append))
+    srv = FakeServer() if server is _DEFAULT else server
+    t0 = asyncio.run(cli.configure(unit, steps, expected, srv, 0, lines.append))
     return t0, lines
 
 
@@ -66,7 +69,7 @@ READS = [p.DEVICE_INFO, p.GET_BROKER, p.GET_CLIENT_ID, p.GET_TOPICS]
 
 def test_provision_sends_the_documented_sequence():
     unit = FakeUnit()
-    run(unit, plan.provision(URI, CID, "trakrf.id", URL, None),
+    run(unit, plan.provision(URI, CID, "trakrf.id", URL),
         plan.expected_config(URI, CID, "trakrf.id"))
     assert unit.sent == READS + [p.SET_BROKER, p.SET_CLIENT_ID, p.SET_TOPICS, p.CERT_URL] \
         + READS + [p.REBOOT]
@@ -81,14 +84,14 @@ def test_recert_writes_only_the_cert_url_then_reboots():
 def test_a_refused_write_aborts_before_reboot():
     unit = FakeUnit(refuse={p.SET_TOPICS})
     with pytest.raises(cli.Fail, match="topics"):
-        run(unit, plan.provision(URI, CID, "trakrf.id", URL, None), {})
+        run(unit, plan.provision(URI, CID, "trakrf.id", URL), {})
     assert p.REBOOT not in unit.sent and p.CERT_URL not in unit.sent
 
 
 def test_a_readback_mismatch_aborts_before_reboot():
     unit = FakeUnit(corrupt_topics=True)
     with pytest.raises(cli.Fail, match="read-back mismatch: topics"):
-        run(unit, plan.provision(URI, CID, "trakrf.id", URL, None),
+        run(unit, plan.provision(URI, CID, "trakrf.id", URL),
             plan.expected_config(URI, CID, "trakrf.id"))
     assert p.REBOOT not in unit.sent
 
@@ -103,11 +106,19 @@ def test_the_wrong_unit_is_refused_before_any_write():
 
 def test_secret_payloads_are_never_echoed():
     unit = FakeUnit()
-    _, lines = run(unit, plan.provision(URI, CID, "trakrf.id", URL, ("ssid", "wifi-pw")),
-                   plan.expected_config(URI, CID, "trakrf.id"))
+    _, lines = run(unit, plan.wifi_join(URI, CID, "trakrf.id", ("ssid", "wifi-pw")),
+                   plan.expected_config(URI, CID, "trakrf.id"), server=None)
     written = "\n".join(lines)
     assert "wifi-pw" not in written
     assert "0x07 broker <secret>: OK" in written
+
+
+def test_wifi_pass1_writes_mqtt_and_wifi_then_reboots_without_cert():
+    unit = FakeUnit()
+    run(unit, plan.wifi_join(URI, CID, "trakrf.id", ("ssid", "pw")),
+        plan.expected_config(URI, CID, "trakrf.id"), server=None)
+    assert unit.sent == READS + [p.SET_BROKER, p.SET_CLIENT_ID, p.SET_TOPICS,
+                                 p.WIFI_CONNECT] + READS + [p.REBOOT]
 
 
 def test_unfetched_certs_still_reboot_and_say_so():
@@ -120,3 +131,28 @@ def test_unfetched_certs_still_reboot_and_say_so():
 def test_missing_proxy_host_is_a_usage_error(monkeypatch, capsys):
     monkeypatch.delenv("ESPHOME_PROXY_HOST", raising=False)
     assert cli.main(["info", "--mac", MAC]) == cli.EXIT_USAGE
+
+
+def test_provision_with_ssid_stops_after_pass_1_and_names_the_next_command(
+        monkeypatch, tmp_path, capsys):
+    from gls10 import creds as creds_mod
+
+    monkeypatch.setenv("ESPHOME_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("WIFI_PASS", "wifi-pw")
+    monkeypatch.setenv("BLE_MCP_RADIO_LOCK", str(tmp_path / "radio.lock"))
+    monkeypatch.setattr(cli.creds, "broker_creds",
+                        lambda env: creds_mod.BrokerCreds("u", "broker-pw", "h"))
+    sent = []
+
+    async def fake_ble(sess, steps, expected, server, fetch_timeout, say):
+        sent.extend(s.cmd for s in steps)
+        assert server is None
+        return 0.0
+
+    monkeypatch.setattr(cli, "_ble", fake_ble)
+    code = cli.main(["provision", "--mac", MAC, "--env", "preview", "--ssid", "myssid"])
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_NEXT_PASS
+    assert p.CERT_URL not in sent and p.WIFI_CONNECT in sent
+    assert f"gls10 recert --mac {MAC} --env preview" in out
+    assert "wifi-pw" not in out and "broker-pw" not in out
