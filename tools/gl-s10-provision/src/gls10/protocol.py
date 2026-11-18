@@ -37,9 +37,15 @@ DEVICE_INFO = 0x21
 REBOOT = 0x22
 SET_CLIENT_ID, GET_CLIENT_ID = 0x27, 0x28
 
-# 0x0c writes uplink priority with unknown semantics; 0x0d is its pair. Neither
-# is ever sent -- enforced here, at the one place every frame is built.
-FORBIDDEN = frozenset({0x0C, 0x0D})
+# Never sent -- enforced here, at the one place every frame is built:
+#   0x0c  writes uplink priority, semantics unknown. (0x0d, its read, is
+#         harmless -- the GL.iNet app reads it on every connect -- but stays
+#         banned with it until 0x0c is understood.)
+#   0x23  FACTORY RESET (empty payload): wipes broker, topics and Wi-Fi. One
+#         id away from 0x22 reboot, so a typo must not be able to send it. A
+#         deliberate reset command needs its own guarded path.
+FACTORY_RESET = 0x23
+FORBIDDEN = frozenset({0x0C, 0x0D, FACTORY_RESET})
 
 
 class ProtocolError(Exception):

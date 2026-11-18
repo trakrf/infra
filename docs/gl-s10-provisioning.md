@@ -156,5 +156,9 @@ the same intermediate, and then nothing needs to happen.
 
 ## Never sent
 
-`0x0c` and `0x0d`. `0x0c` writes an uplink-priority setting whose meaning is
-unknown. The codec refuses to build either.
+`0x0c`/`0x0d` and `0x23`. `0x0c` writes an uplink-priority setting whose
+meaning is unknown, and `0x0d` is its read. `0x23` is the GL.iNet app's
+**factory reset**: it wipes the broker, topics and Wi-Fi, and it is one id away
+from `0x22` reboot. The codec refuses to build any of them.
+
+To factory-reset a unit, use the reset button in the GL.iNet app for now.

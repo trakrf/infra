@@ -38,7 +38,7 @@ def test_decode_rejects_truncated_frame():
         p.Codec("C4DEE229A176").decode(frame[:-3])
 
 
-@pytest.mark.parametrize("cmd", [0x0C, 0x0D])
+@pytest.mark.parametrize("cmd", [0x0C, 0x0D, 0x23])
 def test_forbidden_commands_are_refused(cmd):
     with pytest.raises(p.ForbiddenCommand):
         p.Codec("C4DEE229A176").encode(cmd, b"", count=1)
