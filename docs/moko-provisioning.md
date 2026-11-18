@@ -14,7 +14,8 @@ GL-S10 gateways. The tool is `tools/moko-provision/` (command `moko`); see
   `.env.local`, never in this repo:
   - `NOTIFY_BLE_PASSWORD`: the Notify badges and the fobs. This is the default.
   - `MOKO_BLE_PASSWORD`: Moko's factory default, for tags nobody has re-locked.
-    Use `--password-env MOKO_BLE_PASSWORD`.
+    The M2 (Tool Cart 1) uses this one. Use `--password-env MOKO_BLE_PASSWORD`.
+    A batch uses one password, so batch the M2 separately.
 
   `--password-file <file>` reads it from a file instead. The password is never
   taken from the command line and never printed. A wrong password fails with
@@ -118,6 +119,15 @@ gateway also reports one advertising event as a burst of sightings within a few
 hundred ms (seen on Bob at 10 s), so sightings that close together count as one
 event. Give
 the window at least three telemetry intervals: the default 60 s is enough for 10 s.
+
+Straight after a write, a tag can advertise far faster than profiled for a
+minute or two. This was seen on Bob and Dave, and both settled to the profile.
+If `apply --verify-env` fails on telemetry rate alone while the read-back
+passed, wait two minutes and run `moko verify` again before investigating.
+
+The gateways hear further than the proxy does. A tag the gateways report can
+still be out of the proxy's reach (`is not advertising`): bring it closer to
+the proxy.
 
 ## Connection quirks
 
