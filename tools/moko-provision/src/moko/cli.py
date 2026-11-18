@@ -29,6 +29,13 @@ from gls10.lock import RadioBusy, radio_lock
 from moko import device, onair, profile as pf, protocol as p
 from moko.ble import AuthFailed, DeviceNotFound
 
+# A per-tag failure: reported as FAIL, and a batch moves on to the next tag.
+# BleakError covers the proxy refusing or dropping the GATT connection.
+from bleak.exc import BleakError
+
+TAG_ERRORS = (device.ApplyError, DeviceNotFound, AuthFailed, p.ProtocolError, TimeoutError,
+              BleakError)
+
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_BUSY = 0, 1, 2, 75
 DEFAULT_PROFILE = Path(__file__).resolve().parents[2] / "profiles" / "fleet.yaml"
 DEFAULT_PASSWORD_ENV = "NOTIFY_BLE_PASSWORD"
@@ -103,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     except (Usage, pf.ProfileError, ValueError) as e:
         say(f"usage: {e}")
         return EXIT_USAGE
-    except (device.ApplyError, DeviceNotFound, AuthFailed, p.ProtocolError, TimeoutError) as e:
+    except TAG_ERRORS as e:
         say(f"FAIL: {e}")
         return EXIT_FAIL
 
@@ -148,8 +155,7 @@ def run_apply(wants, proxy, password, args, say) -> int:
             try:
                 out = asyncio.run(_apply_one(Session(proxy, tag.mac, password, args.scan_seconds),
                                              want, args.dry_run, say))
-            except (device.ApplyError, DeviceNotFound, AuthFailed, p.ProtocolError,
-                    TimeoutError) as e:
+            except TAG_ERRORS as e:
                 row.note = str(e)
                 say(f"  FAIL: {e}")
                 continue
