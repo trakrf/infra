@@ -87,6 +87,7 @@ Decisions we made, and why:
 | `scripts/apply-root-app.sh` | Templates `argocd/root/values.yaml` from tofu outputs and installs the root app. |
 | `scripts/smoke-{aks,gke}.sh` | Post-bootstrap precondition checks. |
 | `docs/ops.md` | Operational runbook for preview/prod — authentication, triage, database, backend, ArgoCD, broker. |
+| `tools/gl-s10-provision/` | `gls10`: provisions GL-S10 BLE gateways over BLE and re-certs them when the broker's intermediate changes. Runbook: `docs/gl-s10-provisioning.md`. |
 | `justfile` | Top-level task runner. |
 
 ## Quick start

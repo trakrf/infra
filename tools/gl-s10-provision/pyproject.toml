@@ -1,0 +1,35 @@
+[project]
+name = "gls10"
+version = "0.1.0"
+description = "Provision GL.iNet GL-S10 BLE gateways over BLE through an ESPHome Bluetooth proxy"
+# ssl.SSLSocket.get_unverified_chain() is 3.13+; the cert step needs the broker's chain.
+requires-python = ">=3.13"
+# The BLE stack is pinned EXACTLY to the versions proven on hardware through the same
+# ESPHome proxy. Floors are not enough: bleak 3.1 made disconnected_callback a required
+# argument that bleak-esphome 4.1 does not pass, and the first live run crashed on it.
+# Upgrade these together, and only with a live `gls10 info` against a unit.
+dependencies = [
+    "aioesphomeapi==46.0.0",
+    "bleak==3.0.2",
+    "bleak-esphome==4.0.0",
+    "bleak-retry-connector==4.6.3",
+    "habluetooth==6.26.7",
+    "cryptography>=48.0.1",
+    "paho-mqtt>=2.1.0",
+]
+
+[project.scripts]
+gls10 = "gls10.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gls10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
