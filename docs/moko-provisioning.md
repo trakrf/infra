@@ -32,6 +32,34 @@ export ESPHOME_PROXY_HOST=<proxy LAN IP>
 direnv exec ../.. uv run moko --help   # direnv exec: loads .env.local's passwords
 ```
 
+## Notify new-old-stock tags, as shipped
+
+Moko preset the Notify-branded badges and fobs at the factory. Their sales
+engineer confirmed the preset below. An unopened tag from that stock should
+read back like this before its first `moko apply`. Moko numbers slots from 1;
+`moko` numbers them from 0.
+
+Tags that have been in use may not match. Before its first apply, one badge read
+back with both intervals at 1000 ms and the TLM slot off, so someone had changed
+it with the app. Run `moko read` first rather than assuming the preset.
+
+| Moko slot | `moko` slot | Frame | Settings |
+|---|---|---|---|
+| 1 | 0 | Device info | name `Notify`, ranging 0 dBm, tx 0 dBm, every 2000 ms |
+| 2 | 1 | iBeacon | UUID `EB165B98-0621-10AB-0250-37C882308E5F`, major 2000, minor 1000, ranging 0 dBm, tx 0 dBm, every 2000 ms |
+| 3 | 2 | TLM | tx 0 dBm, every 2000 ms |
+| 4–6 | 3–5 | off | |
+
+Other settings:
+
+- **Password:** the Notify password, `NOTIFY_BLE_PASSWORD`. It is not Moko's
+  factory default.
+- **Button:** cannot turn the tag off, because the order was for a custody
+  deployment. The fleet profile re-enables power-off.
+- **Identity:** every tag ships with the same UUID, major and minor, so the
+  iBeacon identifies the product, not the tag. `moko apply` gives each tag its
+  own minor, turns the TLM slot off, and moves device info to every 10 s.
+
 ## Read a tag
 
 ```sh
