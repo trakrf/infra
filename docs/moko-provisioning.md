@@ -32,33 +32,32 @@ export ESPHOME_PROXY_HOST=<proxy LAN IP>
 direnv exec ../.. uv run moko --help   # direnv exec: loads .env.local's passwords
 ```
 
-## Notify new-old-stock tags, as shipped
+## Starting point: Notify new-old-stock tags
 
-Moko preset the Notify-branded badges and fobs at the factory. Their sales
-engineer confirmed the preset below. An unopened tag from that stock should
-read back like this before its first `moko apply`. Moko numbers slots from 1;
-`moko` numbers them from 0.
+The Notify-branded badges and fobs left Moko's factory with the preset below,
+which Moko's sales engineer confirmed. It is where these tags start, not what
+they should end up as. `moko apply` takes them from this preset to the fleet
+profile, `tools/moko-provision/profiles/fleet.yaml`. Moko numbers slots from 1; `moko` numbers them
+from 0.
 
-Tags that have been in use may not match. Before its first apply, one badge read
-back with both intervals at 1000 ms and the TLM slot off, so someone had changed
-it with the app. Run `moko read` first rather than assuming the preset.
-
-| Moko slot | `moko` slot | Frame | Settings |
+| Moko slot | `moko` slot | As shipped | After `moko apply` |
 |---|---|---|---|
-| 1 | 0 | Device info | name `Notify`, ranging 0 dBm, tx 0 dBm, every 2000 ms |
-| 2 | 1 | iBeacon | UUID `EB165B98-0621-10AB-0250-37C882308E5F`, major 2000, minor 1000, ranging 0 dBm, tx 0 dBm, every 2000 ms |
-| 3 | 2 | TLM | tx 0 dBm, every 2000 ms |
-| 4–6 | 3–5 | off | |
+| 1 | 0 | Device info, name `Notify`, every 2000 ms | Device info, name `TrakRF`, every 10 s |
+| 2 | 1 | iBeacon `EB165B98-0621-10AB-0250-37C882308E5F`, major 2000, minor 1000, every 2000 ms | iBeacon `019E42D9-…`, major 2000, a minor of its own, every 1000 ms |
+| 3 | 2 | TLM, every 2000 ms | off |
+| 4–6 | 3–5 | off | off |
+| Button | | cannot power the tag off (ordered for a custody deployment) | long press powers it off |
 
-Other settings:
+Every slot ships at tx 0 dBm and ranging 0 dBm. After `moko apply`, the iBeacon
+uses ranging −59 dBm.
 
-- **Password:** the Notify password, `NOTIFY_BLE_PASSWORD`. It is not Moko's
-  factory default.
-- **Button:** cannot turn the tag off, because the order was for a custody
-  deployment. The fleet profile re-enables power-off.
-- **Identity:** every tag ships with the same UUID, major and minor, so the
-  iBeacon identifies the product, not the tag. `moko apply` gives each tag its
-  own minor, turns the TLM slot off, and moves device info to every 10 s.
+The password stays as shipped: the Notify password, `NOTIFY_BLE_PASSWORD`, not
+Moko's factory default. Every tag ships with the same UUID, major and minor, so
+as shipped the iBeacon identifies the product, not the tag.
+
+A tag may have been changed with the app since it shipped, so `moko read` it
+rather than assume the preset. `moko apply` reaches the profile from any
+starting state.
 
 ## Read a tag
 
