@@ -52,6 +52,17 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv run --directory tools/gl-s10-provision pytest -q
 
+  moko-provision:
+    # Unit tests for tools/moko-provision: codecs against the BeaconX Pro app's
+    # captured bytes, profile diff/write order, read-back, on-air judging, CLI.
+    # No radio, cluster or network.
+    name: moko-provision tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --directory tools/moko-provision pytest -q
+
   pr-cloud-auth:
     # Gives the workflow files a consumer. terraform-azure.yml's plan job spent
     # a month red on every PR that triggered it — the AKS burn-down deleted the

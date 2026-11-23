@@ -1,0 +1,36 @@
+# Starting fleet profile for MokoSmart BeaconX Pro tags (badges, fobs, M2).
+# `moko apply` reads the tag, writes only what differs from this, and reads back.
+# Slots not listed are turned off. See docs/moko-provisioning.md.
+
+# Long-press of the button may power the tag off. The Notify badges were ordered
+# for a correctional facility and shipped with this disabled, so a wearer cannot
+# switch one off. A demo fleet wants it on, so tags can be off between demos.
+# A custody deployment's profile sets this to false.
+button_power_off: true
+
+# Device name, carried by the device-info frame's slot. Off the rfidCollect
+# "Notify" carryover. `--name` or the batch file's third column overrides it per tag.
+name: TrakRF
+
+slots:
+  # Telemetry: the Moko device-info frame (battery mV at offset 3-4). It is the
+  # only telemetry frame every tag in the fleet already sends, and it carries the
+  # name. Eddystone-TLM is the alternative carrier: set `frame: tlm` here. 10 s
+  # is the slowest the firmware's range allows (100-10000 ms); it was 1-2 s.
+  - frame: info
+    interval_ms: 10000
+    radio_tx_dbm: 0
+    ranging_dbm: 0
+
+  # Presence and location: iBeacon under the fleet UUID. The tag's identity is its
+  # BLE MAC, which is what the platform keys on; major and minor are fleet-wide
+  # and identify no tag. 1 s keeps location latency low. ranging_dbm is the
+  # calibrated RSSI at 1 m that iBeacon receivers use for distance; -59 is the
+  # usual value at 0 dBm.
+  - frame: ibeacon
+    uuid: 019E42D9-FE08-70B4-BBF2-6A6FE2470FDA
+    major: 2000
+    minor: 1000
+    interval_ms: 1000
+    radio_tx_dbm: 0
+    ranging_dbm: -59
