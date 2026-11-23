@@ -33,6 +33,15 @@ authSecret: trakrf-mosquitto-auth
 # ingester chart used, so the existing Secret carries over without re-issue.
 certSecret: trakrf-mqtt-tls
 
+# How long before expiry cert-manager renews the broker cert. Empty = its
+# default, one third of the lifetime (~30 days for Let's Encrypt). The GL-S10s
+# pin the issuing intermediate (currently Let's Encrypt YE2) as their ca.crt and
+# cannot be re-certed in the field, so a renewal that comes back from another
+# intermediate breaks every reader's TLS. Renewing late keeps the current
+# intermediate in service as long as possible. A change here moves only
+# status.renewalTime; it does not reissue unless the new time is already past.
+certRenewBefore: 168h
+
 # WSS listener retired by TRA-924 — Live Reads moved to a backend SSE proxy
 # (org-enforced), so nothing connects to the broker from the browser anymore.
 # Disabled gates off the :8084 listener, its container port, AND the public
