@@ -140,3 +140,14 @@ def test_radio_busy(env, capsys):
         assert cli.main(["read", "--mac", "CFFBF5816BC9"]) == cli.EXIT_BUSY
     finally:
         os.close(fd)
+
+
+@pytest.mark.parametrize("args", [
+    ["batch", "--file", "missing.csv"],
+    ["apply", "--mac", "F5DD8790E84F", "--profile", "missing.yaml"],
+    ["read", "--mac", "F5DD8790E84F", "--password-file", "missing-pw"],
+])
+def test_missing_file_is_a_usage_error_not_a_crash(env, capsys, monkeypatch, tmp_path, args):
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(args) == cli.EXIT_USAGE
+    assert "missing" in capsys.readouterr().err

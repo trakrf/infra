@@ -106,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     except RadioBusy as e:
         say(str(e))
         return EXIT_BUSY
-    except (Usage, pf.ProfileError, ValueError) as e:
+    # FileNotFoundError: a mistyped --file, --profile or --password-file. Not
+    # OSError, which would also swallow a refused proxy connection.
+    except (Usage, pf.ProfileError, ValueError, FileNotFoundError) as e:
         say(f"usage: {e}")
         return EXIT_USAGE
     except TAG_ERRORS as e:
