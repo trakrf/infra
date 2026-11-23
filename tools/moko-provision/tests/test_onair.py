@@ -4,12 +4,12 @@ from pathlib import Path
 from moko import onair
 from moko import profile as pf
 
-WANT = pf.render(pf.load(Path(__file__).parent.parent / "profiles" / "fleet.yaml"), minor=1002)
+WANT = pf.render(pf.load(Path(__file__).parent.parent / "profiles" / "fleet.yaml"))
 MAC = "F5DD8790E84F"
 UUID = "019E42D9FE0870B4BBF26A6FE2470FDA"
 
 
-def ibeacon_ad(uuid=UUID, major=2000, minor=1002):
+def ibeacon_ad(uuid=UUID, major=2000, minor=1000):
     body = "4C000215" + uuid + f"{major:04X}{minor:04X}" + "C5"
     return "020106" + f"{len(body) // 2 + 1:02X}" + "FF" + body
 
@@ -28,7 +28,7 @@ def tlm_ad(mv=3060):
 def test_classify_each_frame():
     f = onair.classify(ibeacon_ad(), "gw1", 0)
     assert f.kind == "ibeacon"
-    assert f.ibeacon == ("019E42D9-FE08-70B4-BBF2-6A6FE2470FDA", 2000, 1002)
+    assert f.ibeacon == ("019E42D9-FE08-70B4-BBF2-6A6FE2470FDA", 2000, 1000)
     assert onair.classify(info_ad(3141), "gw1", 0) == onair.Frame("info", "gw1", 0, battery_mv=3141)
     assert onair.classify(tlm_ad(3060), "gw1", 0).battery_mv == 3060
     assert onair.classify("09FF7CE913296A3100000505", "gw1", 0).kind == "other"
@@ -78,7 +78,7 @@ def bursty(gaps, gw="gw1", kind="info"):
     ts, out = 0, []
     for g in [0] + gaps:
         ts += g
-        out.append(onair.classify(info_ad() if kind == "info" else ibeacon_ad(minor=1002), gw, ts))
+        out.append(onair.classify(info_ad() if kind == "info" else ibeacon_ad(), gw, ts))
     return out
 
 
@@ -105,7 +105,7 @@ def test_one_second_ibeacon_seen_half_a_second_apart_is_not_merged():
 
 
 def test_wrong_minor_and_leftover_tlm_and_missing_battery():
-    rep = onair.judge(frames({"ibeacon": 1000, "tlm": 10000}, ibeacon={"minor": 1000}), WANT, 60)
+    rep = onair.judge(frames({"ibeacon": 1000, "tlm": 10000}, ibeacon={"minor": 1001}), WANT, 60)
     assert "no info frames in 60s" in rep.problems
     assert any("iBeacon advertises" in p for p in rep.problems)
     assert "frames the profile turned off are still on air: ['tlm']" in rep.problems

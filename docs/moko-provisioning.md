@@ -74,7 +74,7 @@ comment beside it. In short:
 | | Setting |
 |---|---|
 | Slot 0 | Moko device-info frame (battery + name) every 10 s |
-| Slot 1 | iBeacon, fleet UUID, major 2000, minor per asset, every 1 s |
+| Slot 1 | iBeacon, fleet UUID, major 2000, minor 1000, every 1 s |
 | Slots 2-5 | off |
 | Triggers | none on every live slot, so nothing goes quiet when stationary |
 | Name | `TrakRF` |
@@ -85,8 +85,8 @@ A custody deployment, which was the Notify badges' original use, wants
 profile for that, rather than editing the fleet one.
 
 ```sh
-direnv exec ../.. uv run moko apply --mac F5DD8790E84F --minor 1002 --name Bob --dry-run
-direnv exec ../.. uv run moko apply --mac F5DD8790E84F --minor 1002 --name Bob --verify-env preview
+direnv exec ../.. uv run moko apply --mac F5DD8790E84F --name Bob --dry-run
+direnv exec ../.. uv run moko apply --mac F5DD8790E84F --name Bob --verify-env preview
 ```
 
 `apply` reads the tag, writes only the slots that differ (each one rewritten in
@@ -94,17 +94,19 @@ the order the app uses), then reads the whole tag back. PASS means the read-back
 matches the profile. A second run against a matching tag writes nothing and
 reports `no-op`. `--verify-env` then watches the gateways (see below).
 
-The minor is the asset's identity on air, and must be unique across the fleet.
-`--name` is optional and defaults to the profile's `name`.
+A tag's identity is its BLE MAC. That is what the platform keys reads and asset
+membership on. The iBeacon UUID, major and minor are the same on every tag in
+the fleet and identify no tag. `--name` is optional and defaults to the
+profile's `name`.
 
 ## Batch
 
-A CSV of `mac, minor[, name]`; `#` lines are comments:
+A CSV of `mac[, name]`; `#` lines are comments:
 
 ```
 # Organized Chaos, preview
-CFFBF5816BC9, 1001, Alice
-F5DD8790E84F, 1002, Bob
+CFFBF5816BC9, Alice
+F5DD8790E84F, Bob
 ```
 
 ```sh
@@ -112,14 +114,14 @@ direnv exec ../.. uv run moko batch --file oc-tags.csv --dry-run
 direnv exec ../.. uv run moko batch --file oc-tags.csv --verify-env preview
 ```
 
-The file is rejected before any radio traffic if a MAC or a minor repeats. One
+The file is rejected before any radio traffic if a MAC repeats. One
 tag failing (out of range, wrong password) does not stop the others. The table
 at the end has a row per tag, and the exit is 1 if any failed.
 
 ## Verify on air
 
 ```sh
-direnv exec ../.. uv run moko verify --mac F5DD8790E84F --minor 1002 --env preview --verify-seconds 90
+direnv exec ../.. uv run moko verify --mac F5DD8790E84F --env preview --verify-seconds 90
 ```
 
 This subscribes to `trakrf.id/+/reads` on the env's broker and decodes every

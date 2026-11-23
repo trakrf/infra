@@ -1,9 +1,9 @@
 """moko -- provision MokoSmart BeaconX Pro tags without the BeaconX Pro app.
 
   moko read   --mac <MAC>                               every slot, triggers, battery -> JSON
-  moko apply  --mac <MAC> --minor <N> [--name <name>]   apply the profile; read back; PASS/FAIL
+  moko apply  --mac <MAC> [--name <name>]              apply the profile; read back; PASS/FAIL
   moko batch  --file tags.csv                           apply to every tag in the file
-  moko verify --mac <MAC> --minor <N> --env preview     check the gateways see the profile on air
+  moko verify --mac <MAC> --env preview                 check the gateways see the profile on air
 
 `apply` and `batch` take --profile (default profiles/fleet.yaml), --dry-run, and
 --verify-env to run `verify` after writing. The tag password comes from the env
@@ -52,11 +52,10 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("read", "apply", "batch", "verify"):
         sp = sub.add_parser(name)
         if name == "batch":
-            sp.add_argument("--file", type=Path, required=True, help="CSV: mac, minor[, name]")
+            sp.add_argument("--file", type=Path, required=True, help="CSV: mac[, name]")
         else:
             sp.add_argument("--mac", required=True)
         if name in ("apply", "verify"):
-            sp.add_argument("--minor", type=int, help="this tag's iBeacon minor")
             sp.add_argument("--name", help="device name (default: the profile's)")
         if name != "read":
             sp.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
@@ -84,8 +83,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.action == "verify":
-            tag = pf.Tag(p.colon_mac(args.mac), args.minor, args.name)
-            want = pf.render(pf.load(args.profile), minor=tag.minor, name=tag.name)
+            tag = pf.Tag(p.colon_mac(args.mac), args.name)
+            want = pf.render(pf.load(args.profile), name=tag.name)
             return EXIT_PASS if verify_many([(tag, want)], args, say) else EXIT_FAIL
         password = _password(args)
         mask.add(password)
@@ -99,10 +98,10 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_PASS
         prof = pf.load(args.profile)
         if args.action == "apply":
-            tags = [pf.Tag(p.colon_mac(args.mac), args.minor, args.name)]
+            tags = [pf.Tag(p.colon_mac(args.mac), args.name)]
         else:
             tags = pf.load_batch(args.file)
-        wants = [(t, pf.render(prof, minor=t.minor, name=t.name)) for t in tags]  # fail before radio
+        wants = [(t, pf.render(prof, name=t.name)) for t in tags]  # fail before radio
         return run_apply(wants, proxy, password, args, say)
     except RadioBusy as e:
         say(str(e))
@@ -151,7 +150,7 @@ def run_apply(wants, proxy, password, args, say) -> int:
         for tag, want in wants:
             row = Row(tag)
             rows.append(row)
-            say(f"== {tag.mac} minor={tag.minor} ==")
+            say(f"== {tag.mac} ==")
             try:
                 out = asyncio.run(_apply_one(Session(proxy, tag.mac, password, args.scan_seconds),
                                              want, args.dry_run, say))
@@ -180,9 +179,9 @@ def run_apply(wants, proxy, password, args, say) -> int:
                     r.result, r.note = "FAIL", r.note + "; not as profiled on air"
 
     say("")
-    say(f"{'MAC':<17}  {'minor':>5}  {'result':<7}  {'writes':>6}  {'batt mV':>7}  note")
+    say(f"{'MAC':<17}  {'result':<7}  {'writes':>6}  {'batt mV':>7}  note")
     for r in rows:
-        say(f"{r.tag.mac:<17}  {r.tag.minor!s:>5}  {r.result:<7}  {r.writes:>6}  "
+        say(f"{r.tag.mac:<17}  {r.result:<7}  {r.writes:>6}  "
             f"{r.battery_mv!s:>7}  {r.note}")
     return EXIT_PASS if all(r.result in ("PASS", "DRY-RUN") for r in rows) else EXIT_FAIL
 

@@ -92,12 +92,12 @@ def test_read_state_matches_the_capture():
 
 def test_apply_then_second_run_is_a_no_op():
     tag = FakeTag()
-    want = pf.render(PROFILE, minor=1001)
+    want = pf.render(PROFILE)
     out = run(device.apply(tag, want, lambda s: None))
     assert out.passed, out.mismatches
     assert out.after["slots"][0]["name"] == "TrakRF"
     assert out.after["slots"][0]["interval_ms"] == 10000
-    assert out.after["slots"][1]["minor"] == 1001
+    assert out.after["slots"][1]["minor"] == 1000
     assert out.after["button_power_off"] is True
 
     tag.writes.clear()
@@ -109,14 +109,14 @@ def test_apply_then_second_run_is_a_no_op():
 
 def test_dry_run_writes_nothing():
     tag = FakeTag()
-    out = run(device.apply(tag, pf.render(PROFILE, minor=1001), lambda s: None, dry_run=True))
+    out = run(device.apply(tag, pf.render(PROFILE), lambda s: None, dry_run=True))
     assert out.steps and out.after is None and not out.passed
     assert all(u == p.CHAR_ADV_SLOT or d[1] in (0x20, 0x28, 0x29) for u, d in tag.writes)
 
 
 def test_rejected_set_fails_loudly():
     with pytest.raises(device.ApplyError, match="button power-off"):
-        run(device.apply(FakeTag(reject_button=True), pf.render(PROFILE, minor=1001), lambda s: None))
+        run(device.apply(FakeTag(reject_button=True), pf.render(PROFILE), lambda s: None))
 
 
 def test_wrong_mac_is_refused():

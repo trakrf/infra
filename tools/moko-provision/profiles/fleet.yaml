@@ -22,13 +22,15 @@ slots:
     radio_tx_dbm: 0
     ranging_dbm: 0
 
-  # Identity and location: iBeacon under the fleet UUID, one minor per asset.
-  # 1 s keeps location latency low. ranging_dbm is the calibrated RSSI at 1 m
-  # that iBeacon receivers use for distance; -59 is the usual value at 0 dBm.
+  # Presence and location: iBeacon under the fleet UUID. The tag's identity is its
+  # BLE MAC, which is what the platform keys on; major and minor are fleet-wide
+  # and identify no tag. 1 s keeps location latency low. ranging_dbm is the
+  # calibrated RSSI at 1 m that iBeacon receivers use for distance; -59 is the
+  # usual value at 0 dBm.
   - frame: ibeacon
     uuid: 019E42D9-FE08-70B4-BBF2-6A6FE2470FDA
     major: 2000
-    minor: per-tag
+    minor: 1000
     interval_ms: 1000
     radio_tx_dbm: 0
     ranging_dbm: -59

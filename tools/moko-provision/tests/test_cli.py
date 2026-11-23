@@ -66,29 +66,24 @@ def test_read_prints_json_and_never_the_password(env, capsys):
 
 def test_apply_then_rerun_is_no_op(env, capsys):
     FakeSession.tags = {"F5:DD:87:90:E8:4F": fake_tag("F5:DD:87:90:E8:4F")}
-    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--minor", "1002", "--name", "Bob"]) == 0
+    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--name", "Bob"]) == 0
     assert "written, read back OK" in capsys.readouterr().err
-    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--minor", "1002", "--name", "Bob"]) == 0
+    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--name", "Bob"]) == 0
     err = capsys.readouterr().err
     assert "no-op" in err and "  0  " in err
-
-
-def test_apply_needs_a_minor_before_touching_the_radio(env, capsys):
-    assert cli.main(["apply", "--mac", "F5DD8790E84F"]) == cli.EXIT_USAGE
-    assert "minor" in capsys.readouterr().err
 
 
 def test_batch_summarises_and_fails_if_any_tag_fails(env, capsys, tmp_path):
     FakeSession.tags = {"F5:DD:87:90:E8:4F": fake_tag("F5:DD:87:90:E8:4F"),
                         "D7:48:FB:BD:99:D4": fake_tag("D7:48:FB:BD:99:D4")}
     f = tmp_path / "tags.csv"
-    f.write_text("F5DD8790E84F,1002,Bob\nD748FBBD99D4,1003,Charlie\nDC90BC628FF4,1004,Dave\n")
+    f.write_text("F5DD8790E84F,Bob\nD748FBBD99D4,Charlie\nDC90BC628FF4,Dave\n")
     assert cli.main(["batch", "--file", str(f)]) == cli.EXIT_FAIL
     err = capsys.readouterr().err
     table = err[err.index("MAC "):]
-    assert "F5:DD:87:90:E8:4F   1002  PASS" in table
-    assert "D7:48:FB:BD:99:D4   1003  PASS" in table
-    assert "DC:90:BC:62:8F:F4   1004  FAIL" in table and "not advertising" in table
+    assert "F5:DD:87:90:E8:4F  PASS" in table
+    assert "D7:48:FB:BD:99:D4  PASS" in table
+    assert "DC:90:BC:62:8F:F4  FAIL" in table and "not advertising" in table
 
 
 class RefusingSession(FakeSession):
@@ -105,24 +100,24 @@ def test_connection_error_is_a_fail_not_a_crash(env, capsys, monkeypatch, tmp_pa
     assert cli.main(["read", "--mac", "0C66EB17F521"]) == cli.EXIT_FAIL
     assert "ESP_GATT_ERROR" in capsys.readouterr().err
     f = tmp_path / "tags.csv"
-    f.write_text("0C66EB17F521,1\nF5DD8790E84F,2\n")
+    f.write_text("0C66EB17F521\nF5DD8790E84F\n")
     assert cli.main(["batch", "--file", str(f)]) == cli.EXIT_FAIL
     table = capsys.readouterr().err
-    assert "0C:66:EB:17:F5:21      1  FAIL" in table
-    assert "F5:DD:87:90:E8:4F      2  FAIL" in table  # the batch kept going
+    assert "0C:66:EB:17:F5:21  FAIL" in table
+    assert "F5:DD:87:90:E8:4F  FAIL" in table  # the batch kept going
 
 
 def test_wrong_password_is_a_fail_not_a_crash(env, capsys, monkeypatch):
     monkeypatch.setenv("NOTIFY_BLE_PASSWORD", "wrong")
     FakeSession.tags = {"F5:DD:87:90:E8:4F": fake_tag("F5:DD:87:90:E8:4F")}
-    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--minor", "1"]) == cli.EXIT_FAIL
+    assert cli.main(["apply", "--mac", "F5DD8790E84F"]) == cli.EXIT_FAIL
     assert "stayed locked" in capsys.readouterr().err
 
 
 def test_dry_run_writes_nothing(env, capsys):
     tag = fake_tag("F5:DD:87:90:E8:4F")
     FakeSession.tags = {"F5:DD:87:90:E8:4F": tag}
-    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--minor", "1", "--dry-run"]) == 0
+    assert cli.main(["apply", "--mac", "F5DD8790E84F", "--dry-run"]) == 0
     assert tag.slots[0]["data"] == bytes.fromhex("404e6f74696679")
     assert "would write slot 0 data" in capsys.readouterr().err
 

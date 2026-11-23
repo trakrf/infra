@@ -24,7 +24,6 @@ from pathlib import Path
 
 from moko import protocol as p
 
-PER_TAG = "per-tag"
 SETTINGS = ("interval_ms", "radio_tx_dbm", "ranging_dbm")
 _SLOT_KEYS = {
     "off": set(),
@@ -49,7 +48,6 @@ class Step:
 @dataclass(frozen=True)
 class Tag:
     mac: str
-    minor: int
     name: str | None
 
 
@@ -63,7 +61,7 @@ def load(path: Path) -> dict:
     return data
 
 
-def render(profile: dict, minor: int | None = None, name: str | None = None) -> dict:
+def render(profile: dict, name: str | None = None) -> dict:
     """The full desired state for one tag."""
     extra = set(profile) - _TOP_KEYS
     if extra:
@@ -74,7 +72,7 @@ def render(profile: dict, minor: int | None = None, name: str | None = None) -> 
     tag_name = name or profile.get("name")
     slots = []
     for i, s in enumerate(slots_in + [{"frame": "off"}] * (p.SLOTS - len(slots_in))):
-        slots.append(_render_slot(i, dict(s), minor, tag_name))
+        slots.append(_render_slot(i, dict(s), tag_name))
     state = {"button_power_off": bool(profile.get("button_power_off", True)), "slots": slots}
     for i, s in enumerate(slots):  # every live slot must encode; fail before the radio
         try:
@@ -88,7 +86,7 @@ def render(profile: dict, minor: int | None = None, name: str | None = None) -> 
     return state
 
 
-def _render_slot(i: int, s: dict, minor: int | None, name: str | None) -> dict:
+def _render_slot(i: int, s: dict, name: str | None) -> dict:
     kind = s.get("frame")
     if kind not in _SLOT_KEYS:
         raise ProfileError(f"slot {i}: frame must be one of {sorted(_SLOT_KEYS)}, got {kind!r}")
@@ -106,10 +104,6 @@ def _render_slot(i: int, s: dict, minor: int | None, name: str | None) -> dict:
             raise ProfileError(f"slot {i}: info frame needs a device name (profile `name` or --name)")
         s["name"] = name
     if kind == "ibeacon":
-        if s["minor"] == PER_TAG:
-            if minor is None:
-                raise ProfileError(f"slot {i}: profile wants a per-tag minor; pass --minor")
-            s["minor"] = minor
         try:
             s["uuid"] = p.norm_uuid(str(s["uuid"]))
         except ValueError as e:
@@ -172,25 +166,21 @@ def mismatches(have: dict, want: dict) -> list[str]:
 
 
 def load_batch(path: Path) -> list[Tag]:
-    """CSV of `mac, minor[, name]`; `#` lines and blanks are skipped."""
+    """CSV of `mac[, name]`; `#` lines and blanks are skipped."""
     tags: list[Tag] = []
     seen_mac: set[str] = set()
-    seen_minor: dict[int, str] = {}
     with open(path, newline="") as f:
         rows = [r for r in csv.reader(line for line in f if line.strip() and not line.lstrip().startswith("#"))]
     for n, row in enumerate(rows, 1):
         row = [c.strip() for c in row]
-        if len(row) not in (2, 3):
-            raise ProfileError(f"{path} row {n}: want `mac, minor[, name]`, got {row}")
+        if len(row) not in (1, 2):
+            raise ProfileError(f"{path} row {n}: want `mac[, name]`, got {row}")
         try:
-            mac, minor = p.colon_mac(row[0]), int(row[1])
+            mac = p.colon_mac(row[0])
         except ValueError as e:
             raise ProfileError(f"{path} row {n}: {e}") from None
         if mac in seen_mac:
             raise ProfileError(f"{path}: {mac} listed twice")
-        if minor in seen_minor:
-            raise ProfileError(f"{path}: minor {minor} used by {seen_minor[minor]} and {mac}")
         seen_mac.add(mac)
-        seen_minor[minor] = mac
-        tags.append(Tag(mac, minor, row[2] if len(row) == 3 and row[2] else None))
+        tags.append(Tag(mac, row[1] if len(row) == 2 and row[1] else None))
     return tags
